@@ -5,7 +5,7 @@ const https = require('https'); // GitHub API ke liye
 // ==========================================
 // ⚙️ SETTINGS
 // ==========================================
-const TARGET_URL = 'https://dadocric.st/player.php?id=ptvsp'; // Apni site ka link
+const TARGET_URL = 'https://dadocric.st/player.php?id=willowextra'; // Apni site ka link
 const STREAM_KEY = process.env.STREAM_KEY || '14136719122027_13152308497003_hnlk6em2e4'; // OK.ru Key
 const RTMP_URL = `rtmp://vsu.okcdn.ru/input/${STREAM_KEY}`;
 
