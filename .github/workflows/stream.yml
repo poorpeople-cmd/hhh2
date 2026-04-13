@@ -1,6 +1,5 @@
 name: Node.js 24/7 Cricket Streamer
 
-
 on:
   workflow_dispatch:
     inputs:
