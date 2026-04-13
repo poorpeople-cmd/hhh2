@@ -72,13 +72,21 @@ async function getStreamData() {
 // ==========================================
 // 2️⃣ FFMPEG CHALANA
 // ==========================================
+
+
+// ==========================================
+// 2️⃣ FFMPEG CHALANA (UPDATED)
+// ==========================================
 function startFfmpeg(data) {
     console.log("\n🎬 [STEP 2] FFmpeg Stream OK.ru par shuru kar raha hoon...");
     
-    const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}`;
+    // 🛠️ BUG FIX: Aakhir mein \r\n lagana zaroori hai taake FFmpeg headers ko theek se read kare!
+    const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}\r\n`;
     
     const args = [
-        "-re", "-loglevel", "error", "-fflags", "+genpts",
+        "-re", 
+        "-loglevel", "error", 
+        "-fflags", "+genpts",
         "-headers", headersCmd,
         "-i", data.url,
         "-c:v", "libx264", "-preset", "ultrafast",
@@ -90,12 +98,50 @@ function startFfmpeg(data) {
 
     const ffmpeg = spawn('ffmpeg', args);
     
+    // 📸 NAYA LOGIC: Agar FFmpeg mein koi error aata hai, toh wo ab console par print hoga!
+    ffmpeg.stderr.on('data', (err) => {
+        const errorMsg = err.toString();
+        // Sirf aam warnings ko ignore karein, baqi sab print karein
+        if (!errorMsg.includes('deprecated')) {
+            console.log(`🚨 [FFmpeg LOG]: ${errorMsg.trim()}`);
+        }
+    });
+
     ffmpeg.on('close', (code) => {
         console.log(`\n⚠️ FFmpeg band ho gaya. (Exit Code: ${code})`);
     });
 
     return ffmpeg;
 }
+
+
+
+
+
+// function startFfmpeg(data) {
+//     console.log("\n🎬 [STEP 2] FFmpeg Stream OK.ru par shuru kar raha hoon...");
+    
+//     const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}`;
+    
+//     const args = [
+//         "-re", "-loglevel", "error", "-fflags", "+genpts",
+//         "-headers", headersCmd,
+//         "-i", data.url,
+//         "-c:v", "libx264", "-preset", "ultrafast",
+//         "-b:v", "300k", "-maxrate", "400k", "-bufsize", "800k",
+//         "-vf", "scale=640:360", "-r", "20",
+//         "-c:a", "aac", "-b:a", "32k", "-ar", "44100",
+//         "-f", "flv", RTMP_URL
+//     ];
+
+//     const ffmpeg = spawn('ffmpeg', args);
+    
+//     ffmpeg.on('close', (code) => {
+//         console.log(`\n⚠️ FFmpeg band ho gaya. (Exit Code: ${code})`);
+//     });
+
+//     return ffmpeg;
+// }
 
 // ==========================================
 // 3️⃣ GITHUB AUTO-RESTART (5h 45m limit)
