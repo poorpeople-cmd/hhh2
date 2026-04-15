@@ -1,89 +1,4 @@
 
-# name: Node.js 24/7 Cricket Streamer
-
-# on:
-#   workflow_dispatch:
-#     inputs:
-#       stream_id:
-#         description: 'Select Stream Server ID (1, 2, 3, or 4)'
-#         required: true
-#         type: choice
-#         options:
-#           - '1'
-#           - '2'
-#           - '3'
-#           - '4'
-#         default: '1'
-#       target_url:
-#         description: 'Target Video Link (Website URL)'
-#         required: true
-#         default: 'https://dadocric.st/player.php?id=ptvsp'
-
-#       # 🛡️ NAYA INPUT: PROXY TOGGLE
-#       use_proxy:
-#         description: 'Proxy Use Karna Hai?'
-#         required: true
-#         type: choice
-#         options:
-#           - 'No (Proxy OFF)'
-#           - 'Yes (Proxy ON)'
-#         default: 'No (Proxy OFF)'
-
-# jobs:
-#   run-stream:
-#     runs-on: ubuntu-latest
-#     timeout-minutes: 360 # 6 Hours Limit
-
-#     steps:
-#     - name: Checkout Code
-#       uses: actions/checkout@v3
-
-#     - name: Setup System (FFmpeg & Chrome)
-#       run: |
-#         sudo apt-get update
-#         sudo apt-get install -y ffmpeg google-chrome-stable
-
-#     - name: Setup Node.js
-#       uses: actions/setup-node@v3
-#       with:
-#         node-version: '18'
-
-#     - name: Install Puppeteer
-#       run: npm install puppeteer
-
-#     - name: Start The Stream Manager
-#       env:
-#         STREAM_ID: ${{ inputs.stream_id }}
-#         TARGET_URL: ${{ inputs.target_url }}
-#         GH_PAT: ${{ secrets.GH_PAT }}
-#         GITHUB_REPOSITORY: ${{ github.repository }}
-#         GITHUB_REF_NAME: ${{ github.ref_name }}
-        
-#         # 🛡️ NAYA: Proxy Variables
-#         USE_PROXY: ${{ inputs.use_proxy }}
-#         PROXY_IP: '31.59.20.176'
-#         PROXY_PORT: '6754'
-#         PROXY_USER: 'dgmtstlf'
-#         PROXY_PASS: 'pm4wnuro0gy9'
-        
-#       run: node streamer.js
-
-
-
-
-
-
-
-
-
-
-
-# // =========== yeh good 100% kaam kar raha hai bas isme proxy on and off wala feature add kya hai taaky kuch bey hu skta hai ============================
-
-
-
-
-
 name: Node.js 24/7 Cricket Streamer
 
 on:
@@ -103,6 +18,16 @@ on:
         description: 'Target Video Link (Website URL)'
         required: true
         default: 'https://dadocric.st/player.php?id=ptvsp'
+
+      # 🛡️ NAYA INPUT: PROXY TOGGLE
+      use_proxy:
+        description: 'Proxy Use Karna Hai?'
+        required: true
+        type: choice
+        options:
+          - 'No (Proxy OFF)'
+          - 'Yes (Proxy ON)'
+        default: 'No (Proxy OFF)'
 
 jobs:
   run-stream:
@@ -133,7 +58,82 @@ jobs:
         GH_PAT: ${{ secrets.GH_PAT }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_REF_NAME: ${{ github.ref_name }}
+        
+        # 🛡️ NAYA: Proxy Variables
+        USE_PROXY: ${{ inputs.use_proxy }}
+        PROXY_IP: '31.59.20.176'
+        PROXY_PORT: '6754'
+        PROXY_USER: 'dgmtstlf'
+        PROXY_PASS: 'pm4wnuro0gy9'
+        
       run: node streamer.js
+
+
+
+
+
+
+
+
+
+
+
+# // =========== yeh good 100% kaam kar raha hai bas isme proxy on and off wala feature add kya hai taaky kuch bey hu skta hai ============================
+
+
+
+
+
+# name: Node.js 24/7 Cricket Streamer
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       stream_id:
+#         description: 'Select Stream Server ID (1, 2, 3, or 4)'
+#         required: true
+#         type: choice
+#         options:
+#           - '1'
+#           - '2'
+#           - '3'
+#           - '4'
+#         default: '1'
+#       target_url:
+#         description: 'Target Video Link (Website URL)'
+#         required: true
+#         default: 'https://dadocric.st/player.php?id=ptvsp'
+
+# jobs:
+#   run-stream:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 360 # 6 Hours Limit
+
+#     steps:
+#     - name: Checkout Code
+#       uses: actions/checkout@v3
+
+#     - name: Setup System (FFmpeg & Chrome)
+#       run: |
+#         sudo apt-get update
+#         sudo apt-get install -y ffmpeg google-chrome-stable
+
+#     - name: Setup Node.js
+#       uses: actions/setup-node@v3
+#       with:
+#         node-version: '18'
+
+#     - name: Install Puppeteer
+#       run: npm install puppeteer
+
+#     - name: Start The Stream Manager
+#       env:
+#         STREAM_ID: ${{ inputs.stream_id }}
+#         TARGET_URL: ${{ inputs.target_url }}
+#         GH_PAT: ${{ secrets.GH_PAT }}
+#         GITHUB_REPOSITORY: ${{ github.repository }}
+#         GITHUB_REF_NAME: ${{ github.ref_name }}
+#       run: node streamer.js
 
 
 
