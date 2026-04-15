@@ -1,231 +1,3 @@
-// const puppeteer = require('puppeteer');
-// const { spawn } = require('child_process');
-
-// // ==========================================
-// // ⚙️ SETTINGS & COUNTERS
-// // ==========================================
-// const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=ptvsp'; 
-// const STREAM_ID = process.env.STREAM_ID || '1'; 
-
-// // 🛡️ NAYA: PROXY SETTINGS & SWITCH
-// const USE_PROXY = process.env.USE_PROXY || 'No (Proxy OFF)';
-// const IS_PROXY_ON = USE_PROXY === 'Yes (Proxy ON)';
-
-// const PROXY_IP = process.env.PROXY_IP || '';
-// const PROXY_PORT = process.env.PROXY_PORT || '';
-// const PROXY_USER = process.env.PROXY_USER || '';
-// const PROXY_PASS = process.env.PROXY_PASS || '';
-
-// const MULTI_KEYS = {
-//     '1': '14136719122027_13152308497003_hnlk6em2e4',
-//     '2': '14136743566955_13152356600427_vmdsemtmo4',
-//     '3': '14136762048107_13152392710763_22fobqpsdi',
-//     '4': '14136778563179_13152426265195_c5quhoj2vm'
-// };
-
-// const STREAM_KEY = MULTI_KEYS[STREAM_ID] || MULTI_KEYS['1'];
-// const RTMP_URL = `rtmp://vsu.okcdn.ru/input/${STREAM_KEY}`;
-
-// // 🛡️ CRITICAL LOGIC COUNTERS
-// let consecutiveLinkFails = 0;
-// let consecutiveFfmpegFails = 0;
-
-// let currentFfmpeg = null;
-// const START_TIME = Date.now();
-// const ACTION_LIMIT_MS = (5 * 60 * 60 + 45 * 60) * 1000;
-
-// function formatPKT(timestampMs) {
-//     return new Date(timestampMs).toLocaleString('en-US', {
-//         timeZone: 'Asia/Karachi', hour12: true, year: 'numeric', month: 'short',
-//         day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-//     }) + " PKT";
-// }
-
-// // ==========================================
-// // 1️⃣ LINK EXTRACTION (WITH STRIKE LOGIC & PROXY)
-// // ==========================================
-// async function getStreamData() {
-//     console.log(`\n[🔍 STEP 1] Puppeteer Chrome Start... (Koshish #${consecutiveLinkFails + 1})`);
-    
-//     let browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--mute-audio'];
-    
-//     // 🛡️ NAYA: Proxy Check Logic
-//     if (IS_PROXY_ON && PROXY_IP && PROXY_PORT) {
-//         browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
-//         console.log(`  [🛡️] Proxy Mode: ON (${PROXY_IP})`);
-//     } else {
-//         console.log(`  [🚀] Proxy Mode: OFF (Direct Connection)`);
-//     }
-
-//     const browser = await puppeteer.launch({ 
-//         headless: true, 
-//         args: browserArgs 
-//     });
-    
-//     const page = await browser.newPage();
-
-//     // 🛡️ NAYA: Proxy Authentication
-//     if (IS_PROXY_ON && PROXY_USER && PROXY_PASS) {
-//         await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
-//     }
-
-//     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-//     let streamData = null;
-
-//     page.on('request', (request) => {
-//         const url = request.url();
-//         if (url.includes('.m3u8')) {
-//             const urlObj = new URL(url);
-//             const expires = urlObj.searchParams.get('expires') || urlObj.searchParams.get('e') || urlObj.searchParams.get('exp');
-//             let expireMs = expires ? parseInt(expires) * 1000 : Date.now() + (60 * 60 * 1000);
-
-//             streamData = {
-//                 url: url,
-//                 referer: request.headers()['referer'] || TARGET_URL,
-//                 cookie: request.headers()['cookie'] || '',
-//                 expireTime: expireMs
-//             };
-//         }
-//     });
-
-//     try {
-//         await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-//         await page.click('body').catch(() => {});
-//         await new Promise(r => setTimeout(r, 15000));
-//     } catch (e) {
-//         console.log(`[❌ ERROR] Page load nahi ho saka.`);
-//     }
-    
-//     await browser.close();
-
-//     if (streamData) {
-//         consecutiveLinkFails = 0; 
-//         console.log(`\n🎉 [BINGO] Link Extract Ho Gaya!`);
-//         console.log(`⏰ EXPIRY: ${formatPKT(streamData.expireTime)}`);
-//         return streamData;
-//     } else {
-//         consecutiveLinkFails++;
-//         console.log(`\n🚨 [WARNING] Link nahi mila. Strike: ${consecutiveLinkFails}/3`);
-        
-//         if (consecutiveLinkFails >= 3) {
-//             console.log(`\n🛑 [FATAL] 3 baar consecutive link nahi mila. Bot ko safety ke liye stop kar raha hoon.`);
-//             process.exit(1); 
-//         }
-//         return null;
-//     }
-// }
-
-// // ==========================================
-// // 2️⃣ FFMPEG (WITH SMART ERROR DETECTION)
-// // ==========================================
-// function startFfmpeg(data) {
-//     console.log(`[🚀 STEP 2] FFmpeg Shuru... (Strike Counter: ${consecutiveFfmpegFails}/3)`);
-    
-//     const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}\r\n`;
-    
-//     const args = [
-//         "-re", "-loglevel", "error", "-headers", headersCmd, "-i", data.url,
-//         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
-//         "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
-//         "-f", "flv", RTMP_URL
-//     ];
-
-//     const ffmpeg = spawn('ffmpeg', args);
-//     const startTime = Date.now();
-//     let hasOkRuError = false; 
-
-//     ffmpeg.stderr.on('data', (err) => {
-//         const msg = err.toString();
-//         if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
-//             console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
-//             hasOkRuError = true; 
-//         }
-//     });
-
-//     ffmpeg.on('close', (code, signal) => {
-//         const duration = (Date.now() - startTime) / 1000;
-
-//         if (signal === 'SIGKILL' || signal === 'SIGTERM') {
-//             console.log(`[♻️ SWAP CLEANUP] Purana FFmpeg successfully swap ho gaya.`);
-//             return; 
-//         }
-
-//         console.log(`\n⚠️ FFmpeg band ho gaya. (Code: ${code}, Duration: ${duration}s)`);
-
-//         if (hasOkRuError || (code !== 0 && duration < 120)) {
-//             consecutiveFfmpegFails++;
-//             console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
-            
-//             if (consecutiveFfmpegFails >= 3) {
-//                 console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai (3 Strikes). Workflow khtam.`);
-//                 process.exit(1);
-//             }
-//         } else if (duration >= 120) {
-//             consecutiveFfmpegFails = 0; 
-//         }
-//     });
-
-//     return ffmpeg;
-// }
-
-// // ==========================================
-// // 🚀 MAIN MANAGER LOOP
-// // ==========================================
-// async function mainLoop() {
-//     console.log(`\n[⏰ MANAGER] Time: ${formatPKT(Date.now())}`);
-
-//     let streamData = await getStreamData();
-    
-//     if (!streamData) {
-//         console.log(`[🔄] 1 minute baad retry...`);
-//         setTimeout(mainLoop, 60000);
-//         return;
-//     }
-
-//     currentFfmpeg = startFfmpeg(streamData);
-
-//     let waitTimeMs = (streamData.expireTime - Date.now()) - (3 * 60 * 1000); 
-//     if (waitTimeMs < 0) waitTimeMs = 60000;
-
-//     console.log(`[⏳] Bot Alarm Set: ${formatPKT(Date.now() + waitTimeMs)} par naya link layega.`);
-
-//     setTimeout(async () => {
-//         console.log(`\n⏰ [ALARM] Naya link lene ka waqt ho gaya.`);
-        
-//         let newData = await getStreamData();
-        
-//         if (newData) {
-//             console.log(`[⚡ SWAP] Naya FFmpeg chala kar purana SIGKILL kar raha hoon...`);
-//             if (currentFfmpeg) {
-//                 currentFfmpeg.kill('SIGKILL'); 
-//             }
-//             currentFfmpeg = startFfmpeg(newData);
-//         }
-
-//         mainLoop(); 
-//     }, waitTimeMs);
-// }
-
-// // Script Start
-// mainLoop();
-
-
-
-
-
-
-
-
-
-
-
-
-
-// =========== yeh good 100% kaam kar raha hai bas isme proxy on and off wala feature add kya hai taaky kuch bey hu skta hai ============================
-
-
-
 const puppeteer = require('puppeteer');
 const { spawn } = require('child_process');
 
@@ -234,6 +6,15 @@ const { spawn } = require('child_process');
 // ==========================================
 const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=ptvsp'; 
 const STREAM_ID = process.env.STREAM_ID || '1'; 
+
+// 🛡️ NAYA: PROXY SETTINGS & SWITCH
+const USE_PROXY = process.env.USE_PROXY || 'No (Proxy OFF)';
+const IS_PROXY_ON = USE_PROXY === 'Yes (Proxy ON)';
+
+const PROXY_IP = process.env.PROXY_IP || '';
+const PROXY_PORT = process.env.PROXY_PORT || '';
+const PROXY_USER = process.env.PROXY_USER || '';
+const PROXY_PASS = process.env.PROXY_PASS || '';
 
 const MULTI_KEYS = {
     '1': '14136719122027_13152308497003_hnlk6em2e4',
@@ -261,17 +42,33 @@ function formatPKT(timestampMs) {
 }
 
 // ==========================================
-// 1️⃣ LINK EXTRACTION (WITH STRIKE LOGIC)
+// 1️⃣ LINK EXTRACTION (WITH STRIKE LOGIC & PROXY)
 // ==========================================
 async function getStreamData() {
     console.log(`\n[🔍 STEP 1] Puppeteer Chrome Start... (Koshish #${consecutiveLinkFails + 1})`);
     
+    let browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--mute-audio'];
+    
+    // 🛡️ NAYA: Proxy Check Logic
+    if (IS_PROXY_ON && PROXY_IP && PROXY_PORT) {
+        browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
+        console.log(`  [🛡️] Proxy Mode: ON (${PROXY_IP})`);
+    } else {
+        console.log(`  [🚀] Proxy Mode: OFF (Direct Connection)`);
+    }
+
     const browser = await puppeteer.launch({ 
         headless: true, 
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--mute-audio'] 
+        args: browserArgs 
     });
     
     const page = await browser.newPage();
+
+    // 🛡️ NAYA: Proxy Authentication
+    if (IS_PROXY_ON && PROXY_USER && PROXY_PASS) {
+        await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
+    }
+
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     let streamData = null;
@@ -303,7 +100,7 @@ async function getStreamData() {
     await browser.close();
 
     if (streamData) {
-        consecutiveLinkFails = 0; // Success! Counter reset
+        consecutiveLinkFails = 0; 
         console.log(`\n🎉 [BINGO] Link Extract Ho Gaya!`);
         console.log(`⏰ EXPIRY: ${formatPKT(streamData.expireTime)}`);
         return streamData;
@@ -336,23 +133,19 @@ function startFfmpeg(data) {
 
     const ffmpeg = spawn('ffmpeg', args);
     const startTime = Date.now();
-    let hasOkRuError = false; // 🛡️ Naya flag OK.ru ke errors ke liye
+    let hasOkRuError = false; 
 
-    // Error pakarne ka logic
     ffmpeg.stderr.on('data', (err) => {
         const msg = err.toString();
-        // Agar ok.ru block kare (403, 404, connection refused)
         if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
             console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
-            hasOkRuError = true; // Error detected
+            hasOkRuError = true; 
         }
     });
 
-    // Close event - Yahan faisla hoga ke strike deni hai ya nahi
     ffmpeg.on('close', (code, signal) => {
         const duration = (Date.now() - startTime) / 1000;
 
-        // 🛡️ NAYA LOGIC: Agar humne khud swap ke waqt SIGKILL bheja hai, toh strike nahi deni!
         if (signal === 'SIGKILL' || signal === 'SIGTERM') {
             console.log(`[♻️ SWAP CLEANUP] Purana FFmpeg successfully swap ho gaya.`);
             return; 
@@ -360,9 +153,6 @@ function startFfmpeg(data) {
 
         console.log(`\n⚠️ FFmpeg band ho gaya. (Code: ${code}, Duration: ${duration}s)`);
 
-        // Strike sirf tab count hogi agar:
-        // 1. OK.ru ne error diya ho (hasOkRuError)
-        // 2. YA 2 minute chala hi na ho (Asli crash)
         if (hasOkRuError || (code !== 0 && duration < 120)) {
             consecutiveFfmpegFails++;
             console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
@@ -372,7 +162,7 @@ function startFfmpeg(data) {
                 process.exit(1);
             }
         } else if (duration >= 120) {
-            consecutiveFfmpegFails = 0; // Agar 2 min chal gaya matlab sahi chal raha tha, toh reset.
+            consecutiveFfmpegFails = 0; 
         }
     });
 
@@ -408,7 +198,6 @@ async function mainLoop() {
         if (newData) {
             console.log(`[⚡ SWAP] Naya FFmpeg chala kar purana SIGKILL kar raha hoon...`);
             if (currentFfmpeg) {
-                // Jab hum yahan SIGKILL bhejenge, toh code usko ignore karega
                 currentFfmpeg.kill('SIGKILL'); 
             }
             currentFfmpeg = startFfmpeg(newData);
@@ -420,6 +209,217 @@ async function mainLoop() {
 
 // Script Start
 mainLoop();
+
+
+
+
+
+
+
+
+
+
+
+
+
+// =========== yeh good 100% kaam kar raha hai bas isme proxy on and off wala feature add kya hai taaky kuch bey hu skta hai ============================
+
+
+
+// const puppeteer = require('puppeteer');
+// const { spawn } = require('child_process');
+
+// // ==========================================
+// // ⚙️ SETTINGS & COUNTERS
+// // ==========================================
+// const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=ptvsp'; 
+// const STREAM_ID = process.env.STREAM_ID || '1'; 
+
+// const MULTI_KEYS = {
+//     '1': '14136719122027_13152308497003_hnlk6em2e4',
+//     '2': '14136743566955_13152356600427_vmdsemtmo4',
+//     '3': '14136762048107_13152392710763_22fobqpsdi',
+//     '4': '14136778563179_13152426265195_c5quhoj2vm'
+// };
+
+// const STREAM_KEY = MULTI_KEYS[STREAM_ID] || MULTI_KEYS['1'];
+// const RTMP_URL = `rtmp://vsu.okcdn.ru/input/${STREAM_KEY}`;
+
+// // 🛡️ CRITICAL LOGIC COUNTERS
+// let consecutiveLinkFails = 0;
+// let consecutiveFfmpegFails = 0;
+
+// let currentFfmpeg = null;
+// const START_TIME = Date.now();
+// const ACTION_LIMIT_MS = (5 * 60 * 60 + 45 * 60) * 1000;
+
+// function formatPKT(timestampMs) {
+//     return new Date(timestampMs).toLocaleString('en-US', {
+//         timeZone: 'Asia/Karachi', hour12: true, year: 'numeric', month: 'short',
+//         day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+//     }) + " PKT";
+// }
+
+// // ==========================================
+// // 1️⃣ LINK EXTRACTION (WITH STRIKE LOGIC)
+// // ==========================================
+// async function getStreamData() {
+//     console.log(`\n[🔍 STEP 1] Puppeteer Chrome Start... (Koshish #${consecutiveLinkFails + 1})`);
+    
+//     const browser = await puppeteer.launch({ 
+//         headless: true, 
+//         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--mute-audio'] 
+//     });
+    
+//     const page = await browser.newPage();
+//     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+//     let streamData = null;
+
+//     page.on('request', (request) => {
+//         const url = request.url();
+//         if (url.includes('.m3u8')) {
+//             const urlObj = new URL(url);
+//             const expires = urlObj.searchParams.get('expires') || urlObj.searchParams.get('e') || urlObj.searchParams.get('exp');
+//             let expireMs = expires ? parseInt(expires) * 1000 : Date.now() + (60 * 60 * 1000);
+
+//             streamData = {
+//                 url: url,
+//                 referer: request.headers()['referer'] || TARGET_URL,
+//                 cookie: request.headers()['cookie'] || '',
+//                 expireTime: expireMs
+//             };
+//         }
+//     });
+
+//     try {
+//         await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+//         await page.click('body').catch(() => {});
+//         await new Promise(r => setTimeout(r, 15000));
+//     } catch (e) {
+//         console.log(`[❌ ERROR] Page load nahi ho saka.`);
+//     }
+    
+//     await browser.close();
+
+//     if (streamData) {
+//         consecutiveLinkFails = 0; // Success! Counter reset
+//         console.log(`\n🎉 [BINGO] Link Extract Ho Gaya!`);
+//         console.log(`⏰ EXPIRY: ${formatPKT(streamData.expireTime)}`);
+//         return streamData;
+//     } else {
+//         consecutiveLinkFails++;
+//         console.log(`\n🚨 [WARNING] Link nahi mila. Strike: ${consecutiveLinkFails}/3`);
+        
+//         if (consecutiveLinkFails >= 3) {
+//             console.log(`\n🛑 [FATAL] 3 baar consecutive link nahi mila. Bot ko safety ke liye stop kar raha hoon.`);
+//             process.exit(1); 
+//         }
+//         return null;
+//     }
+// }
+
+// // ==========================================
+// // 2️⃣ FFMPEG (WITH SMART ERROR DETECTION)
+// // ==========================================
+// function startFfmpeg(data) {
+//     console.log(`[🚀 STEP 2] FFmpeg Shuru... (Strike Counter: ${consecutiveFfmpegFails}/3)`);
+    
+//     const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}\r\n`;
+    
+//     const args = [
+//         "-re", "-loglevel", "error", "-headers", headersCmd, "-i", data.url,
+//         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
+//         "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
+//         "-f", "flv", RTMP_URL
+//     ];
+
+//     const ffmpeg = spawn('ffmpeg', args);
+//     const startTime = Date.now();
+//     let hasOkRuError = false; // 🛡️ Naya flag OK.ru ke errors ke liye
+
+//     // Error pakarne ka logic
+//     ffmpeg.stderr.on('data', (err) => {
+//         const msg = err.toString();
+//         // Agar ok.ru block kare (403, 404, connection refused)
+//         if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
+//             console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
+//             hasOkRuError = true; // Error detected
+//         }
+//     });
+
+//     // Close event - Yahan faisla hoga ke strike deni hai ya nahi
+//     ffmpeg.on('close', (code, signal) => {
+//         const duration = (Date.now() - startTime) / 1000;
+
+//         // 🛡️ NAYA LOGIC: Agar humne khud swap ke waqt SIGKILL bheja hai, toh strike nahi deni!
+//         if (signal === 'SIGKILL' || signal === 'SIGTERM') {
+//             console.log(`[♻️ SWAP CLEANUP] Purana FFmpeg successfully swap ho gaya.`);
+//             return; 
+//         }
+
+//         console.log(`\n⚠️ FFmpeg band ho gaya. (Code: ${code}, Duration: ${duration}s)`);
+
+//         // Strike sirf tab count hogi agar:
+//         // 1. OK.ru ne error diya ho (hasOkRuError)
+//         // 2. YA 2 minute chala hi na ho (Asli crash)
+//         if (hasOkRuError || (code !== 0 && duration < 120)) {
+//             consecutiveFfmpegFails++;
+//             console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
+            
+//             if (consecutiveFfmpegFails >= 3) {
+//                 console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai (3 Strikes). Workflow khtam.`);
+//                 process.exit(1);
+//             }
+//         } else if (duration >= 120) {
+//             consecutiveFfmpegFails = 0; // Agar 2 min chal gaya matlab sahi chal raha tha, toh reset.
+//         }
+//     });
+
+//     return ffmpeg;
+// }
+
+// // ==========================================
+// // 🚀 MAIN MANAGER LOOP
+// // ==========================================
+// async function mainLoop() {
+//     console.log(`\n[⏰ MANAGER] Time: ${formatPKT(Date.now())}`);
+
+//     let streamData = await getStreamData();
+    
+//     if (!streamData) {
+//         console.log(`[🔄] 1 minute baad retry...`);
+//         setTimeout(mainLoop, 60000);
+//         return;
+//     }
+
+//     currentFfmpeg = startFfmpeg(streamData);
+
+//     let waitTimeMs = (streamData.expireTime - Date.now()) - (3 * 60 * 1000); 
+//     if (waitTimeMs < 0) waitTimeMs = 60000;
+
+//     console.log(`[⏳] Bot Alarm Set: ${formatPKT(Date.now() + waitTimeMs)} par naya link layega.`);
+
+//     setTimeout(async () => {
+//         console.log(`\n⏰ [ALARM] Naya link lene ka waqt ho gaya.`);
+        
+//         let newData = await getStreamData();
+        
+//         if (newData) {
+//             console.log(`[⚡ SWAP] Naya FFmpeg chala kar purana SIGKILL kar raha hoon...`);
+//             if (currentFfmpeg) {
+//                 // Jab hum yahan SIGKILL bhejenge, toh code usko ignore karega
+//                 currentFfmpeg.kill('SIGKILL'); 
+//             }
+//             currentFfmpeg = startFfmpeg(newData);
+//         }
+
+//         mainLoop(); 
+//     }, waitTimeMs);
+// }
+
+// // Script Start
+// mainLoop();
 
 
 
