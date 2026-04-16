@@ -19,7 +19,7 @@ const PROXY_PASS = process.env.PROXY_PASS || '';
 const MULTI_KEYS = {
     '1': '14601603391083_14040893622891_puxzrwjniu',
     '2': '14601696583275_14041072274027_apdzpdb5xi',
-    '3': '14601723715179_0_ziqywpxfwq',
+    '3': '14617940008555_14072500914795_ohw67ls7ny',
     '4': '14601972227691_14041593547371_obdhgewlmq'
 };
 
