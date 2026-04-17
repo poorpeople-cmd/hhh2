@@ -275,7 +275,7 @@ function startFfmpeg() {
 // 🚀 MAIN MANAGER LOOP & ALARM
 // ==========================================
 async function scheduleNextFetch() {
-    let waitTimeMs = (currentStream.expireTime - Date.now()) - (5 * 60 * 1000); 
+    let waitTimeMs = (currentStream.expireTime - Date.now()) - (70 * 60 * 1000); // haha
     if (waitTimeMs < 0) waitTimeMs = 60000;
 
     console.log(`\n[⏳ ALARM SET] Next Background Fetch will trigger exactly in ${Math.round(waitTimeMs/60000)} minutes.`);
