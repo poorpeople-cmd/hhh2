@@ -1,5 +1,4 @@
-
-name: Node.js 24/7 Cricket Streamer
+name: VIP 0% Downtime Streamer
 
 on:
   workflow_dispatch:
@@ -19,7 +18,7 @@ on:
         required: true
         default: 'https://dadocric.st/player.php?id=willowextra'
 
-      # 🛡️ NAYA INPUT: PROXY TOGGLE
+      # 🛡️ PROXY TOGGLE
       use_proxy:
         description: 'Proxy Use Karna Hai?'
         required: true
@@ -48,10 +47,10 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Install Puppeteer
-      run: npm install puppeteer
+    - name: Install Libraries (Puppeteer & Axios)
+      run: npm install puppeteer axios
 
-    - name: Start The Stream Manager
+    - name: Start The Zero-Downtime Stream Manager
       env:
         STREAM_ID: ${{ inputs.stream_id }}
         TARGET_URL: ${{ inputs.target_url }}
@@ -59,7 +58,7 @@ jobs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_REF_NAME: ${{ github.ref_name }}
         
-        # 🛡️ NAYA: Proxy Variables
+        # 🛡️ Proxy Variables
         USE_PROXY: ${{ inputs.use_proxy }}
         PROXY_IP: '31.59.20.176'
         PROXY_PORT: '6754'
@@ -67,6 +66,145 @@ jobs:
         PROXY_PASS: 'pm4wnuro0gy9'
         
       run: node streamer.js
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# // ================== 100% perfect, bas eek new update add karney k try kar rahey hai 0% (Seamless) with ok.ru , oopper code mei =========================
+
+
+
+# name: Node.js 24/7 Cricket Streamer
+
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       stream_id:
+#         description: 'Select Stream Server ID (1, 2, 3, or 4)'
+#         required: true
+#         type: choice
+#         options:
+#           - '1'
+#           - '2'
+#           - '3'
+#           - '4'
+#         default: '1'
+#       target_url:
+#         description: 'Target Video Link (Website URL)'
+#         required: true
+#         default: 'https://dadocric.st/player.php?id=willowextra'
+
+#       # 🛡️ NAYA INPUT: PROXY TOGGLE
+#       use_proxy:
+#         description: 'Proxy Use Karna Hai?'
+#         required: true
+#         type: choice
+#         options:
+#           - 'No (Proxy OFF)'
+#           - 'Yes (Proxy ON)'
+#         default: 'No (Proxy OFF)'
+
+# jobs:
+#   run-stream:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 360 # 6 Hours Limit
+
+#     steps:
+#     - name: Checkout Code
+#       uses: actions/checkout@v3
+
+#     - name: Setup System (FFmpeg & Chrome)
+#       run: |
+#         sudo apt-get update
+#         sudo apt-get install -y ffmpeg google-chrome-stable
+
+#     - name: Setup Node.js
+#       uses: actions/setup-node@v3
+#       with:
+#         node-version: '18'
+
+#     - name: Install Puppeteer
+#       run: npm install puppeteer
+
+#     - name: Start The Stream Manager
+#       env:
+#         STREAM_ID: ${{ inputs.stream_id }}
+#         TARGET_URL: ${{ inputs.target_url }}
+#         GH_PAT: ${{ secrets.GH_PAT }}
+#         GITHUB_REPOSITORY: ${{ github.repository }}
+#         GITHUB_REF_NAME: ${{ github.ref_name }}
+        
+#         # 🛡️ NAYA: Proxy Variables
+#         USE_PROXY: ${{ inputs.use_proxy }}
+#         PROXY_IP: '31.59.20.176'
+#         PROXY_PORT: '6754'
+#         PROXY_USER: 'dgmtstlf'
+#         PROXY_PASS: 'pm4wnuro0gy9'
+        
+#       run: node streamer.js
 
 
 
