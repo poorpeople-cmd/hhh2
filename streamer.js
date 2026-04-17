@@ -235,7 +235,7 @@ async function scheduleNextFetch() {
     // ----------------------------------------------------------------
     
     // Testing ke liye fix 2 minute (120,000 milliseconds) ka timer
-    let waitTimeMs = 2 * 60 * 1000; 
+    let waitTimeMs = 1 * 60 * 1000; 
     
     // Jab testing khatam ho jaye toh is 2 min wali line ko delete kar dena, 
     // aur upar wali "Asli Logic" ko uncomment kar dena!
