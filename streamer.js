@@ -27,7 +27,7 @@ const PROXY_SELECT = process.env.PROXY_SELECT || 'Proxy 1';
 const PROXY_LIST = {
     'Proxy 1': { ip: '31.59.20.176', port: '6754', user: 'dgmtstlf', pass: 'pm4wnuro0gy9' },
     'Proxy 2': { ip: '31.58.9.4', port: '6077', user: 'dgmtstlf', pass: 'pm4wnuro0gy9' },
-    'Proxy 3': { ip: '123.45.67.89', port: '8080', user: 'username3', pass: 'password3' } // Yeh ek example hai
+    'Proxy 3': { ip: '142.111.67.146', port: '5611', user: 'username3', pass: 'password3' } // Yeh ek example hai
 };
 
 const activeProxy = PROXY_LIST[PROXY_SELECT] || PROXY_LIST['Proxy 1'];
