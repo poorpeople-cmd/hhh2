@@ -1,13 +1,11 @@
-
-
 const puppeteer = require('puppeteer');
-const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder'); // 🎥 ADDED
+const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder'); 
 const { spawn } = require('child_process');
 const http = require('http');
 const axios = require('axios');
 const { URL } = require('url');
-const fs = require('fs'); // 🎥 ADDED
-const path = require('path'); // 🎥 ADDED
+const fs = require('fs'); 
+const path = require('path'); 
 
 // 🎥 Video save karne ke liye folder setup
 const videoDir = path.join(__dirname, 'videos');
@@ -23,11 +21,21 @@ const STREAM_ID = process.env.STREAM_ID || '1';
 
 // 🛡️ SMART PROXY SETTINGS
 const USE_PROXY = process.env.USE_PROXY || 'No (Proxy OFF)';
+const PROXY_SELECT = process.env.PROXY_SELECT || 'Proxy 1';
 
-const PROXY_IP = process.env.PROXY_IP || '';
-const PROXY_PORT = process.env.PROXY_PORT || '';
-const PROXY_USER = process.env.PROXY_USER || '';
-const PROXY_PASS = process.env.PROXY_PASS || '';
+// 🌐 MULTI-PROXY LIST (Aap yahan naye proxies add kar sakte hain)
+const PROXY_LIST = {
+    'Proxy 1': { ip: '31.59.20.176', port: '6754', user: 'dgmtstlf', pass: 'pm4wnuro0gy9' },
+    'Proxy 2': { ip: '31.58.9.4', port: '6077', user: 'dgmtstlf', pass: 'pm4wnuro0gy9' },
+    'Proxy 3': { ip: '123.45.67.89', port: '8080', user: 'username3', pass: 'password3' } // Yeh ek example hai
+};
+
+const activeProxy = PROXY_LIST[PROXY_SELECT] || PROXY_LIST['Proxy 1'];
+
+const PROXY_IP = activeProxy.ip;
+const PROXY_PORT = activeProxy.port;
+const PROXY_USER = activeProxy.user;
+const PROXY_PASS = activeProxy.pass;
 
 const MULTI_KEYS = {
     '1': '14601603391083_14040893622891_puxzrwjniu',
@@ -62,7 +70,7 @@ setInterval(() => {
         let minsLeft = Math.max(0, Math.round(remainingMs / 60000));
         console.log(`[💓 HEARTBEAT] Bot zinda hai aur stream chala raha hai! Next fetch in approx ${minsLeft} minutes...`);
     }
-}, 5 * 60 * 1000); // Har 5 minute baad print hoga taake GitHub soye nahi!
+}, 5 * 60 * 1000); 
 
 // ==========================================
 // 🌐 THE MAGIC: LOCAL HLS PROXY SERVER
@@ -84,7 +92,7 @@ const startLocalProxy = () => {
             if (targetUrl.includes('.m3u8')) {
                 const response = await axios.get(targetUrl, {
                     responseType: 'text',
-                    timeout: 15000, // Anti-Hang Timeout
+                    timeout: 15000, 
                     headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
                 });
 
@@ -108,7 +116,7 @@ const startLocalProxy = () => {
             } else {
                 const response = await axios.get(targetUrl, {
                     responseType: 'stream',
-                    timeout: 15000, // Anti-Hang Timeout
+                    timeout: 15000, 
                     headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
                 });
                 res.writeHead(200, { 'Content-Type': response.headers['content-type'] || 'video/MP2T' });
@@ -134,7 +142,6 @@ async function getStreamData(isBackgroundFetch = false) {
     console.log(`[⏰ TIME] Fetch started at: ${formatPKT(Date.now())}`);
     console.log(`${"-".repeat(60)}`);
     
-    // 🎥 ADDED: '--autoplay-policy=no-user-gesture-required' flag
     let browserArgs = [
         '--no-sandbox', 
         '--disable-setuid-sandbox', 
@@ -143,7 +150,6 @@ async function getStreamData(isBackgroundFetch = false) {
         '--autoplay-policy=no-user-gesture-required' 
     ];
     
-    // 🛡️ SMART PROXY LOGIC
     let useProxyForThisRun = false;
     if (USE_PROXY === 'Yes (Proxy ON)') {
         useProxyForThisRun = true;
@@ -153,12 +159,11 @@ async function getStreamData(isBackgroundFetch = false) {
 
     if (useProxyForThisRun && PROXY_IP && PROXY_PORT) {
         browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
-        console.log(`  [🛡️] Proxy Mode: ON (${PROXY_IP})`);
+        console.log(`  [🛡️] Proxy Mode: ON (${PROXY_SELECT} -> ${PROXY_IP})`);
     } else {
         console.log(`  [🚀] Proxy Mode: OFF (Direct Connection)`);
     }
 
-    // 🎥 ADDED: defaultViewport HD set kiya video ke liye
     const browser = await puppeteer.launch({ 
         headless: true, 
         defaultViewport: { width: 1280, height: 720 }, 
@@ -172,7 +177,6 @@ async function getStreamData(isBackgroundFetch = false) {
 
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    // 🎥 ADDED: Video Recorder initialization
     const recorder = new PuppeteerScreenRecorder(page);
     const videoFileName = `stream-video-cycle${fetchCycle}-${Date.now()}.mp4`;
     const videoPath = path.join(videoDir, videoFileName);
@@ -210,7 +214,6 @@ async function getStreamData(isBackgroundFetch = false) {
         if (!isBackgroundFetch) console.log(`  [❌ ERROR] Page load nahi ho saka.`);
     }
     
-    // 🎥 ADDED: Stop Recording
     console.log("🛑 Video recording stop kar raha hoon...");
     await recorder.stop();
 
@@ -289,11 +292,10 @@ function startFfmpeg() {
 // ==========================================
 async function scheduleNextFetch() {
     
-    // ⚠️ ASLI LOGIC: Expire hone se exactly 74 Minute (74 * 60 * 1000) pehle! (Testing ke liye ~6 mins wait)
-    let waitTimeMs = (currentStream.expireTime - Date.now()) - (74 * 60 * 1000); 
-    if (waitTimeMs < 0) waitTimeMs = 60000; // Agar calculation negative ho jaye toh 1 min wait kare
+    let waitTimeMs = (currentStream.expireTime - Date.now()) - (5 * 60 * 1000); 
+    if (waitTimeMs < 0) waitTimeMs = 3000;
 
-    console.log(`\n[⏳ ALARM SET] Next Background Fetch will trigger exactly in ${Math.round(waitTimeMs/60000)} minutes.`);
+    console.log(`\n[⏳ ALARM SET] Next Background Fetch will trigger exactly in ${Math.round(waitTimeMs/1000)} seconds.`);
     console.log(`[⏰ TRIGGER TIME] Alarm baje ga: ${formatPKT(Date.now() + waitTimeMs)}`);
 
     setTimeout(async () => {
@@ -301,7 +303,7 @@ async function scheduleNextFetch() {
         console.log(`⏰ [ALARM RINGS!] Purani stream chal rahi hai... Background mein naya link lene ja raha hoon.`);
         console.log(`${"=".repeat(60)}`);
         
-        fetchCycle++; // Agla chakar shuru
+        fetchCycle++; 
         let newData = await getStreamData(true);
         
         if (newData) {
@@ -309,10 +311,9 @@ async function scheduleNextFetch() {
             console.log(`\n💥 [MAGIC SWAP!] Naya link internally Local Proxy ko de diya gaya hai!`);
             console.log(`💥 [0% DOWNTIME] FFmpeg ko jhatka bhi nahi laga aur stream naye link par transfer ho gayi!`);
         } else {
-            console.log(`\n⚠️ [SWAP FAILED] Background fetch fail hua, aglay minute dobara try karunga.`);
+            console.log(`\n⚠️ [SWAP FAILED] Background fetch fail hua, 3 seconds baad dobara try karunga.`);
         }
 
-        // Agle chakar ka alarm dobara set karo
         scheduleNextFetch(); 
     }, waitTimeMs);
 }
@@ -324,14 +325,13 @@ async function mainLoop() {
 
     currentStream = await getStreamData();
     if (!currentStream) {
-        console.log(`[🔄] 1 minute baad retry...`);
-        setTimeout(mainLoop, 60000);
+        console.log(`[🔄] 3 seconds baad retry...`);
+        setTimeout(mainLoop, 3000);
         return;
     }
 
     currentFfmpeg = startFfmpeg();
 
-    // Alarm lagao agle link ke liye
     scheduleNextFetch();
 }
 
