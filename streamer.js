@@ -379,21 +379,65 @@ async function getStreamData(isBackgroundFetch = false) {
 // ==========================================
 // 2️⃣ FFMPEG (CONNECTS TO INTERNAL PROXY)
 // ==========================================
+
+
+
+
+
+
+
+
+// ==========================================
+// 2️⃣ FFMPEG (CONNECTS TO INTERNAL PROXY) - UX OPTIMIZED
+// ==========================================
 function startFfmpeg() {
     console.log(`\n[🚀 STEP 2] FFmpeg Engine Shuru... (Internal Proxy par connected)`);
     console.log(`[⏰ TIME] FFmpeg Started at: ${formatPKT(Date.now())}`);
     
     const args = [
-        "-re", "-loglevel", "error", 
+        "-re", 
+        "-use_wallclock_as_timestamps", "1", // ⚡ FIX 1: Treats input like a real continuous clock
+        "-loglevel", "error", 
+        "-fflags", "+genpts", // ⚡ FIX 2: Generates missing timestamps automatically
         "-i", "http://127.0.0.1:8080/live.m3u8", 
-        "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
-        "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
-        "-f", "flv", RTMP_URL
+        "-c:v", "libx264", 
+        "-preset", "ultrafast", 
+        "-b:v", "300k",
+        "-vf", "scale=640:360", 
+        "-r", "20", 
+        "-c:a", "aac", 
+        "-b:a", "32k",
+        "-async", "1", // ⚡ FIX 3: Audio aur Video ko out-of-sync hone se bachata hai
+        "-max_muxing_queue_size", "1024", // ⚡ FIX 4: Buffer size bara karta hai taake hang na ho
+        "-f", "flv", 
+        RTMP_URL
     ];
 
     const ffmpeg = spawn('ffmpeg', args);
     const startTime = Date.now();
     let hasOkRuError = false; 
+
+// ... baki ka code same rahega ...
+
+
+
+
+
+// function startFfmpeg() {
+//     console.log(`\n[🚀 STEP 2] FFmpeg Engine Shuru... (Internal Proxy par connected)`);
+//     console.log(`[⏰ TIME] FFmpeg Started at: ${formatPKT(Date.now())}`);
+    
+//     const args = [
+//         "-re", "-loglevel", "error", 
+//         "-i", "http://127.0.0.1:8080/live.m3u8", 
+//         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
+//         "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
+//         "-f", "flv", RTMP_URL
+//     ];
+
+//     const ffmpeg = spawn('ffmpeg', args);
+//     const startTime = Date.now();
+//     let hasOkRuError = false; 
 
     ffmpeg.stderr.on('data', (err) => {
         const msg = err.toString();
