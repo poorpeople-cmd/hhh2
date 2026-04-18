@@ -1,523 +1,4 @@
 
-const puppeteer = require('puppeteer');
-const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder'); 
-const { spawn } = require('child_process');
-const http = require('http');
-const axios = require('axios');
-const { URL } = require('url');
-const fs = require('fs'); 
-const path = require('path'); 
-
-// 🎥 Video save karne ke liye folder setup
-const videoDir = path.join(__dirname, 'videos');
-if (!fs.existsSync(videoDir)){
-    fs.mkdirSync(videoDir);
-}
-
-// ==========================================
-// ⚙️ SETTINGS & COUNTERS
-// ==========================================
-const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=ptvsp'; 
-const STREAM_ID = process.env.STREAM_ID || '1'; 
-
-// 🛡️ SMART PROXY SETTINGS
-const USE_PROXY = process.env.USE_PROXY || 'No (Proxy OFF)';
-const PROXY_SELECT = process.env.PROXY_SELECT || 'Proxy 1';
-
-// 🌐 MULTI-PROXY LIST (Aap yahan naye proxies add kar sakte hain)
-const PROXY_LIST = {
-    'Proxy 1': { ip: '31.59.20.176', port: '6754', user: 'cjasfidu', pass: 'qhnyvm0qpf6p' }, // 🇬🇧 united kingdom(1)
-    'Proxy 2': { ip: '31.58.9.4', port: '6077', user: 'cjasfidu', pass: 'qhnyvm0qpf6p' }, // germany(9)
-    'Proxy 3': { ip: '142.111.67.146', port: '5611', user: 'cjasfidu', pass: 'qhnyvm0qpf6p' } // japan(7)
-};
-
-const activeProxy = PROXY_LIST[PROXY_SELECT] || PROXY_LIST['Proxy 1'];
-
-const PROXY_IP = activeProxy.ip;
-const PROXY_PORT = activeProxy.port;
-const PROXY_USER = activeProxy.user;
-const PROXY_PASS = activeProxy.pass;
-
-const MULTI_KEYS = {
-    '1': '14601603391083_14040893622891_puxzrwjniu',
-    '2': '14601696583275_14041072274027_apdzpdb5xi',
-    '3': '14617940008555_14072500914795_ohw67ls7ny',
-    '4': '14601972227691_14041593547371_obdhgewlmq'
-};
-
-const STREAM_KEY = MULTI_KEYS[STREAM_ID] || MULTI_KEYS['1'];
-const RTMP_URL = `rtmp://vsu.okcdn.ru/input/${STREAM_KEY}`;
-
-// 🛡️ CRITICAL LOGIC COUNTERS
-let consecutiveLinkFails = 0;
-let consecutiveFfmpegFails = 0;
-let currentFfmpeg = null;
-let currentStream = null; 
-let fetchCycle = 1;
-
-function formatPKT(timestampMs) {
-    return new Date(timestampMs).toLocaleString('en-US', {
-        timeZone: 'Asia/Karachi', hour12: true, year: 'numeric', month: 'short',
-        day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-    }) + " PKT";
-}
-
-// ==========================================
-// 💓 HEARTBEAT ENGINE (KEEPS GITHUB ALIVE)
-// ==========================================
-setInterval(() => {
-    if (currentStream) {
-        let remainingMs = (currentStream.expireTime - Date.now()) - (5 * 60 * 1000);
-        let minsLeft = Math.max(0, Math.round(remainingMs / 60000));
-        console.log(`[💓 HEARTBEAT] Bot zinda hai aur stream chala raha hai! Next fetch in approx ${minsLeft} minutes...`);
-    }
-}, 5 * 60 * 1000); 
-
-// ==========================================
-// 🌐 THE MAGIC: LOCAL HLS PROXY SERVER
-// ==========================================
-const startLocalProxy = () => {
-    const server = http.createServer(async (req, res) => {
-        if (!currentStream) {
-            res.writeHead(503); return res.end('Not Ready');
-        }
-
-        try {
-            let targetUrl = currentStream.url;
-            if (req.url.startsWith('/proxy?target=')) {
-                targetUrl = decodeURIComponent(req.url.split('target=')[1]);
-            } else if (req.url !== '/live.m3u8') {
-                res.writeHead(404); return res.end();
-            }
-
-            if (targetUrl.includes('.m3u8')) {
-                const response = await axios.get(targetUrl, {
-                    responseType: 'text',
-                    timeout: 15000, 
-                    headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
-                });
-
-                const baseUrl = new URL(targetUrl);
-                const rewritten = response.data.split('\n').map(line => {
-                    let tLine = line.trim();
-                    if (tLine === '') return line;
-                    if (tLine.startsWith('#')) {
-                        return tLine.replace(/URI="(.*?)"/g, (match, p1) => {
-                            let absUrl = p1.startsWith('http') ? p1 : new URL(p1, baseUrl).toString();
-                            return `URI="http://127.0.0.1:8080/proxy?target=${encodeURIComponent(absUrl)}"`;
-                        });
-                    }
-                    let absoluteUrl = tLine.startsWith('http') ? tLine : new URL(tLine, baseUrl).toString();
-                    return `http://127.0.0.1:8080/proxy?target=${encodeURIComponent(absoluteUrl)}`;
-                }).join('\n');
-
-                res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
-                res.end(rewritten);
-                
-            } else {
-                const response = await axios.get(targetUrl, {
-                    responseType: 'stream',
-                    timeout: 15000, 
-                    headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
-                });
-                res.writeHead(200, { 'Content-Type': response.headers['content-type'] || 'video/MP2T' });
-                response.data.pipe(res);
-            }
-        } catch (err) {
-            res.writeHead(500); res.end();
-        }
-    });
-
-    server.listen(8080, () => {
-        console.log(`\n[🌐 PROXY] Local HLS Server Started at http://127.0.0.1:8080`);
-    });
-};
-
-// ==========================================
-// 1️⃣ LINK EXTRACTION (PUPPETEER)
-// ==========================================
-
-
-// ==========================================
-// 1️⃣ LINK EXTRACTION (PUPPETEER) - CPU OPTIMIZED
-// ==========================================
-async function getStreamData(isBackgroundFetch = false) {
-    let modeText = isBackgroundFetch ? "BACKGROUND SWAP MODE (LIGHTWEIGHT)" : "FIRST BOOT MODE";
-    console.log(`\n${"-".repeat(60)}`);
-    console.log(`[🔍 CYCLE #${fetchCycle}] Puppeteer Chrome Start kar raha hoon... (${modeText})`);
-    console.log(`[⏰ TIME] Fetch started at: ${formatPKT(Date.now())}`);
-    console.log(`${"-".repeat(60)}`);
-    
-    let browserArgs = [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox', 
-        '--disable-blink-features=AutomationControlled', 
-        '--mute-audio',
-        '--autoplay-policy=no-user-gesture-required',
-        '--disable-dev-shm-usage', // ⚡ GITHUB ACTIONS KE LIYE ZAROORI (RAM fix)
-        '--disable-accelerated-2d-canvas', // ⚡ CPU bachane ke liye
-        '--disable-gpu' // ⚡ CPU bachane ke liye
-    ];
-    
-    let useProxyForThisRun = false;
-    if (USE_PROXY === 'Yes (Proxy ON)') {
-        useProxyForThisRun = true;
-    } else if (USE_PROXY === 'Only First Time (Proxy FIRST)' && !isBackgroundFetch) {
-        useProxyForThisRun = true;
-    }
-
-    if (useProxyForThisRun && PROXY_IP && PROXY_PORT) {
-        browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
-        console.log(`  [🛡️] Proxy Mode: ON (${PROXY_SELECT} -> ${PROXY_IP})`);
-    } else {
-        console.log(`  [🚀] Proxy Mode: OFF (Direct Connection)`);
-    }
-
-    const browser = await puppeteer.launch({ 
-        headless: true, 
-        defaultViewport: { width: 1280, height: 720 }, 
-        args: browserArgs 
-    });
-    const page = await browser.newPage();
-
-    if (useProxyForThisRun && PROXY_USER && PROXY_PASS) {
-        await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
-    }
-
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-    // 🛑 CRITICAL FIX: Screen Recording sirf First Boot par hogi, Background mein NAHI!
-    let recorder = null;
-    if (!isBackgroundFetch) {
-        recorder = new PuppeteerScreenRecorder(page);
-        const videoFileName = `stream-video-cycle${fetchCycle}-${Date.now()}.mp4`;
-        const videoPath = path.join(videoDir, videoFileName);
-        console.log(`  🎥 [CPU OPTIMIZED] First Boot: Video recording start kar raha hoon...`);
-        await recorder.start(videoPath);
-    } else {
-        console.log(`  ⚡ [CPU OPTIMIZED] Background Fetch: Video recording DISABLED taake FFmpeg hang na ho.`);
-    }
-
-    let streamData = null;
-
-    page.on('request', (request) => {
-        const url = request.url();
-        if (url.includes('.m3u8')) {
-            const urlObj = new URL(url);
-            const expires = urlObj.searchParams.get('expires') || urlObj.searchParams.get('e') || urlObj.searchParams.get('exp');
-            streamData = {
-                url: url,
-                ua: request.headers()['user-agent'] || '', 
-                referer: request.headers()['referer'] || TARGET_URL,
-                cookie: request.headers()['cookie'] || '',
-                expireTime: expires ? parseInt(expires) * 1000 : Date.now() + (60 * 60 * 1000)
-            };
-        }
-    });
-
-    try {
-        console.log(`  [🌐 JS] Going to Target URL: ${TARGET_URL}`);
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.click('body').catch(() => {});
-        console.log(`  [⏳ JS] Waiting 15 seconds to grab the M3U8 link...`);
-        for (let i = 1; i <= 3; i++) {
-            await new Promise(r => setTimeout(r, 5000));
-            if (streamData) break;
-        }
-    } catch (e) {
-        if (!isBackgroundFetch) console.log(`  [❌ ERROR] Page load nahi ho saka.`);
-    }
-    
-    // 🛑 Stop recorder ONLY if it was started
-    if (!isBackgroundFetch && recorder) {
-        console.log("  🛑 Video recording stop kar raha hoon...");
-        await recorder.stop();
-    }
-
-    await browser.close();
-
-    if (streamData) {
-        consecutiveLinkFails = 0; 
-        console.log(`\n  🎉 [BINGO] Link Extract Ho Gaya!`);
-        console.log(`  🔗 [M3U8 LINK]: ${streamData.url.substring(0, 80)}...`); 
-        return streamData;
-    } else {
-        if (!isBackgroundFetch) {
-            consecutiveLinkFails++;
-            console.log(`\n  🚨 [WARNING] Link nahi mila. Strike: ${consecutiveLinkFails}/3`);
-            if (consecutiveLinkFails >= 3) {
-                console.log(`\n  🛑 [FATAL] 3 baar consecutive link nahi mila. Bot stopped.`);
-                process.exit(1); 
-            }
-        }
-        return null;
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// async function getStreamData(isBackgroundFetch = false) {
-//     let modeText = isBackgroundFetch ? "BACKGROUND SWAP MODE" : "FIRST BOOT MODE";
-//     console.log(`\n${"-".repeat(60)}`);
-//     console.log(`[🔍 CYCLE #${fetchCycle}] Puppeteer Chrome Start kar raha hoon... (${modeText})`);
-//     console.log(`[⏰ TIME] Fetch started at: ${formatPKT(Date.now())}`);
-//     console.log(`${"-".repeat(60)}`);
-    
-//     let browserArgs = [
-//         '--no-sandbox', 
-//         '--disable-setuid-sandbox', 
-//         '--disable-blink-features=AutomationControlled', 
-//         '--mute-audio',
-//         '--autoplay-policy=no-user-gesture-required' 
-//     ];
-    
-//     let useProxyForThisRun = false;
-//     if (USE_PROXY === 'Yes (Proxy ON)') {
-//         useProxyForThisRun = true;
-//     } else if (USE_PROXY === 'Only First Time (Proxy FIRST)' && !isBackgroundFetch) {
-//         useProxyForThisRun = true;
-//     }
-
-//     if (useProxyForThisRun && PROXY_IP && PROXY_PORT) {
-//         browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
-//         console.log(`  [🛡️] Proxy Mode: ON (${PROXY_SELECT} -> ${PROXY_IP})`);
-//     } else {
-//         console.log(`  [🚀] Proxy Mode: OFF (Direct Connection)`);
-//     }
-
-//     const browser = await puppeteer.launch({ 
-//         headless: true, 
-//         defaultViewport: { width: 1280, height: 720 }, 
-//         args: browserArgs 
-//     });
-//     const page = await browser.newPage();
-
-//     if (useProxyForThisRun && PROXY_USER && PROXY_PASS) {
-//         await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
-//     }
-
-//     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-//     const recorder = new PuppeteerScreenRecorder(page);
-//     const videoFileName = `stream-video-cycle${fetchCycle}-${Date.now()}.mp4`;
-//     const videoPath = path.join(videoDir, videoFileName);
-    
-//     console.log(`🎥 Video recording start kar raha hoon...`);
-//     await recorder.start(videoPath);
-
-//     let streamData = null;
-
-//     page.on('request', (request) => {
-//         const url = request.url();
-//         if (url.includes('.m3u8')) {
-//             const urlObj = new URL(url);
-//             const expires = urlObj.searchParams.get('expires') || urlObj.searchParams.get('e') || urlObj.searchParams.get('exp');
-//             streamData = {
-//                 url: url,
-//                 ua: request.headers()['user-agent'] || '', 
-//                 referer: request.headers()['referer'] || TARGET_URL,
-//                 cookie: request.headers()['cookie'] || '',
-//                 expireTime: expires ? parseInt(expires) * 1000 : Date.now() + (60 * 60 * 1000)
-//             };
-//         }
-//     });
-
-//     try {
-//         console.log(`  [🌐 JS] Going to Target URL: ${TARGET_URL}`);
-//         await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-//         await page.click('body').catch(() => {});
-//         console.log(`  [⏳ JS] Waiting 15 seconds to grab the M3U8 link...`);
-//         for (let i = 1; i <= 3; i++) {
-//             await new Promise(r => setTimeout(r, 5000));
-//             if (streamData) break;
-//         }
-//     } catch (e) {
-//         if (!isBackgroundFetch) console.log(`  [❌ ERROR] Page load nahi ho saka.`);
-//     }
-    
-//     console.log("🛑 Video recording stop kar raha hoon...");
-//     await recorder.stop();
-
-//     await browser.close();
-
-//     if (streamData) {
-//         consecutiveLinkFails = 0; 
-//         console.log(`\n  🎉 [BINGO] Link Extract Ho Gaya!`);
-//         console.log(`  🔗 [M3U8 LINK]: ${streamData.url.substring(0, 80)}...`); 
-//         console.log(`  📅 [TOTAL ORIGINAL EXPIRY]: ${formatPKT(streamData.expireTime)}`);
-//         return streamData;
-//     } else {
-//         if (!isBackgroundFetch) {
-//             consecutiveLinkFails++;
-//             console.log(`\n  🚨 [WARNING] Link nahi mila. Strike: ${consecutiveLinkFails}/3`);
-//             if (consecutiveLinkFails >= 3) {
-//                 console.log(`\n  🛑 [FATAL] 3 baar consecutive link nahi mila. Bot stopped.`);
-//                 process.exit(1); 
-//             }
-//         }
-//         return null;
-//     }
-// }
-
-// ==========================================
-// 2️⃣ FFMPEG (CONNECTS TO INTERNAL PROXY)
-// ==========================================
-
-
-
-
-
-
-
-
-// ==========================================
-// 2️⃣ FFMPEG (CONNECTS TO INTERNAL PROXY) - UX OPTIMIZED
-// ==========================================
-function startFfmpeg() {
-    console.log(`\n[🚀 STEP 2] FFmpeg Engine Shuru... (Internal Proxy par connected)`);
-    console.log(`[⏰ TIME] FFmpeg Started at: ${formatPKT(Date.now())}`);
-    
-    const args = [
-        "-re", 
-        "-use_wallclock_as_timestamps", "1", // ⚡ FIX 1: Treats input like a real continuous clock
-        "-loglevel", "error", 
-        "-fflags", "+genpts", // ⚡ FIX 2: Generates missing timestamps automatically
-        "-i", "http://127.0.0.1:8080/live.m3u8", 
-        "-c:v", "libx264", 
-        "-preset", "ultrafast", 
-        "-b:v", "300k",
-        "-vf", "scale=640:360", 
-        "-r", "20", 
-        "-c:a", "aac", 
-        "-b:a", "32k",
-        "-async", "1", // ⚡ FIX 3: Audio aur Video ko out-of-sync hone se bachata hai
-        "-max_muxing_queue_size", "1024", // ⚡ FIX 4: Buffer size bara karta hai taake hang na ho
-        "-f", "flv", 
-        RTMP_URL
-    ];
-
-    const ffmpeg = spawn('ffmpeg', args);
-    const startTime = Date.now();
-    let hasOkRuError = false; 
-
-// ... baki ka code same rahega ...
-
-
-
-
-
-// function startFfmpeg() {
-//     console.log(`\n[🚀 STEP 2] FFmpeg Engine Shuru... (Internal Proxy par connected)`);
-//     console.log(`[⏰ TIME] FFmpeg Started at: ${formatPKT(Date.now())}`);
-    
-//     const args = [
-//         "-re", "-loglevel", "error", 
-//         "-i", "http://127.0.0.1:8080/live.m3u8", 
-//         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
-//         "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
-//         "-f", "flv", RTMP_URL
-//     ];
-
-//     const ffmpeg = spawn('ffmpeg', args);
-//     const startTime = Date.now();
-//     let hasOkRuError = false; 
-
-    ffmpeg.stderr.on('data', (err) => {
-        const msg = err.toString();
-        if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
-            console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
-            hasOkRuError = true; 
-        }
-    });
-
-    ffmpeg.on('close', (code) => {
-        const duration = (Date.now() - startTime) / 1000;
-        console.log(`\n⚠️ FFmpeg Crash ho gaya. (Code: ${code}, Duration: ${duration}s)`);
-
-        if (hasOkRuError || (code !== 0 && duration < 120)) {
-            consecutiveFfmpegFails++;
-            console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
-            if (consecutiveFfmpegFails >= 3) {
-                console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai. Workflow khtam.`);
-                process.exit(1);
-            }
-        } else if (duration >= 120) {
-            consecutiveFfmpegFails = 0; 
-        }
-
-        console.log(`[🔄] Auto-Restarting FFmpeg...`);
-        currentFfmpeg = startFfmpeg();
-    });
-
-    return ffmpeg;
-}
-
-// ==========================================
-// 🚀 MAIN MANAGER LOOP & ALARM
-// ==========================================
-async function scheduleNextFetch() {
-    
-    let waitTimeMs = (currentStream.expireTime - Date.now()) - (5 * 60 * 1000); 
-    if (waitTimeMs < 0) waitTimeMs = 3000;
-
-    console.log(`\n[⏳ ALARM SET] Next Background Fetch will trigger exactly in ${Math.round(waitTimeMs/1000)} seconds.`);
-    console.log(`[⏰ TRIGGER TIME] Alarm baje ga: ${formatPKT(Date.now() + waitTimeMs)}`);
-
-    setTimeout(async () => {
-        console.log(`\n${"=".repeat(60)}`);
-        console.log(`⏰ [ALARM RINGS!] Purani stream chal rahi hai... Background mein naya link lene ja raha hoon.`);
-        console.log(`${"=".repeat(60)}`);
-        
-        fetchCycle++; 
-        let newData = await getStreamData(true);
-        
-        if (newData) {
-            currentStream = newData; 
-            console.log(`\n💥 [MAGIC SWAP!] Naya link internally Local Proxy ko de diya gaya hai!`);
-            console.log(`💥 [0% DOWNTIME] FFmpeg ko jhatka bhi nahi laga aur stream naye link par transfer ho gayi!`);
-        } else {
-            console.log(`\n⚠️ [SWAP FAILED] Background fetch fail hua, 3 seconds baad dobara try karunga.`);
-        }
-
-        scheduleNextFetch(); 
-    }, waitTimeMs);
-}
-
-async function mainLoop() {
-    console.log(`\n[🚀 MAIN] System Boot: ${formatPKT(Date.now())}`);
-    
-    startLocalProxy();
-
-    currentStream = await getStreamData();
-    if (!currentStream) {
-        console.log(`[🔄] 3 seconds baad retry...`);
-        setTimeout(mainLoop, 3000);
-        return;
-    }
-
-    currentFfmpeg = startFfmpeg();
-
-    scheduleNextFetch();
-}
-
-mainLoop();
 
 
 
@@ -2738,292 +2219,313 @@ mainLoop();
 
 
 
-// const puppeteer = require('puppeteer');
-// const { spawn } = require('child_process');
-// const http = require('http');
-// const axios = require('axios');
-// const { URL } = require('url');
+const puppeteer = require('puppeteer');
+const { spawn } = require('child_process');
+const http = require('http');
+const axios = require('axios');
+const { URL } = require('url');
 
-// // ==========================================
-// // ⚙️ SETTINGS & COUNTERS
-// // ==========================================
-// const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=ptvsp'; 
-// const STREAM_ID = process.env.STREAM_ID || '1'; 
+// ==========================================
+// ⚙️ SETTINGS & COUNTERS
+// ==========================================
+const TARGET_URL = process.env.TARGET_URL || 'https://dadocric.st/player.php?id=ptvsp'; 
+const STREAM_ID = process.env.STREAM_ID || '1'; 
 
-// // 🛡️ PROXY SETTINGS & SWITCH
-// const USE_PROXY = process.env.USE_PROXY || 'No (Proxy OFF)';
-// const IS_PROXY_ON = USE_PROXY === 'Yes (Proxy ON)';
+// 🛡️ PROXY SETTINGS & SWITCH
+const USE_PROXY = process.env.USE_PROXY || 'No (Proxy OFF)';
+const IS_PROXY_ON = USE_PROXY === 'Yes (Proxy ON)';
 
-// const PROXY_IP = process.env.PROXY_IP || '';
-// const PROXY_PORT = process.env.PROXY_PORT || '';
-// const PROXY_USER = process.env.PROXY_USER || '';
-// const PROXY_PASS = process.env.PROXY_PASS || '';
+const PROXY_IP = process.env.PROXY_IP || '';
+const PROXY_PORT = process.env.PROXY_PORT || '';
+const PROXY_USER = process.env.PROXY_USER || '';
+const PROXY_PASS = process.env.PROXY_PASS || '';
 
-// const MULTI_KEYS = {
-//     '1': '14601603391083_14040893622891_puxzrwjniu',
-//     '2': '14601696583275_14041072274027_apdzpdb5xi',
-//     '3': '14617940008555_14072500914795_ohw67ls7ny',
-//     '4': '14601972227691_14041593547371_obdhgewlmq'
-// };
+const MULTI_KEYS = {
+    '1': '14601603391083_14040893622891_puxzrwjniu',
+    '2': '14601696583275_14041072274027_apdzpdb5xi',
+    '3': '14617940008555_14072500914795_ohw67ls7ny',
+    '4': '14601972227691_14041593547371_obdhgewlmq'
+};
 
-// const STREAM_KEY = MULTI_KEYS[STREAM_ID] || MULTI_KEYS['1'];
-// const RTMP_URL = `rtmp://vsu.okcdn.ru/input/${STREAM_KEY}`;
+const STREAM_KEY = MULTI_KEYS[STREAM_ID] || MULTI_KEYS['1'];
+const RTMP_URL = `rtmp://vsu.okcdn.ru/input/${STREAM_KEY}`;
 
-// // 🛡️ CRITICAL LOGIC COUNTERS
-// let consecutiveLinkFails = 0;
-// let consecutiveFfmpegFails = 0;
-// let currentFfmpeg = null;
-// let currentStream = null; 
-// let fetchCycle = 1; // 🌟 NAYA: Cycle counter add kiya gaya hai
+// 🛡️ CRITICAL LOGIC COUNTERS
+let consecutiveLinkFails = 0;
+let consecutiveFfmpegFails = 0;
+let currentFfmpeg = null;
+let currentStream = null; 
+let fetchCycle = 1; // 🌟 NAYA: Cycle counter add kiya gaya hai
 
-// function formatPKT(timestampMs) {
-//     return new Date(timestampMs).toLocaleString('en-US', {
-//         timeZone: 'Asia/Karachi', hour12: true, year: 'numeric', month: 'short',
-//         day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-//     }) + " PKT";
-// }
+function formatPKT(timestampMs) {
+    return new Date(timestampMs).toLocaleString('en-US', {
+        timeZone: 'Asia/Karachi', hour12: true, year: 'numeric', month: 'short',
+        day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }) + " PKT";
+}
 
-// // ==========================================
-// // 🌐 THE MAGIC: LOCAL HLS PROXY SERVER
-// // ==========================================
-// const startLocalProxy = () => {
-//     const server = http.createServer(async (req, res) => {
-//         if (!currentStream) {
-//             res.writeHead(503); return res.end('Not Ready');
-//         }
+// ==========================================
+// 🌐 THE MAGIC: LOCAL HLS PROXY SERVER
+// ==========================================
+const startLocalProxy = () => {
+    const server = http.createServer(async (req, res) => {
+        if (!currentStream) {
+            res.writeHead(503); return res.end('Not Ready');
+        }
 
-//         try {
-//             let targetUrl = currentStream.url;
-//             if (req.url.startsWith('/proxy?target=')) {
-//                 targetUrl = decodeURIComponent(req.url.split('target=')[1]);
-//             } else if (req.url !== '/live.m3u8') {
-//                 res.writeHead(404); return res.end();
-//             }
+        try {
+            let targetUrl = currentStream.url;
+            if (req.url.startsWith('/proxy?target=')) {
+                targetUrl = decodeURIComponent(req.url.split('target=')[1]);
+            } else if (req.url !== '/live.m3u8') {
+                res.writeHead(404); return res.end();
+            }
 
-//             if (targetUrl.includes('.m3u8')) {
-//                 const response = await axios.get(targetUrl, {
-//                     responseType: 'text',
-//                     headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
-//                 });
+            if (targetUrl.includes('.m3u8')) {
+                const response = await axios.get(targetUrl, {
+                    responseType: 'text',
+                    headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
+                });
 
-//                 const baseUrl = new URL(targetUrl);
-//                 const rewritten = response.data.split('\n').map(line => {
-//                     let tLine = line.trim();
-//                     if (tLine === '') return line;
-//                     if (tLine.startsWith('#')) {
-//                         return tLine.replace(/URI="(.*?)"/g, (match, p1) => {
-//                             let absUrl = p1.startsWith('http') ? p1 : new URL(p1, baseUrl).toString();
-//                             return `URI="http://127.0.0.1:8080/proxy?target=${encodeURIComponent(absUrl)}"`;
-//                         });
-//                     }
-//                     let absoluteUrl = tLine.startsWith('http') ? tLine : new URL(tLine, baseUrl).toString();
-//                     return `http://127.0.0.1:8080/proxy?target=${encodeURIComponent(absoluteUrl)}`;
-//                 }).join('\n');
+                const baseUrl = new URL(targetUrl);
+                const rewritten = response.data.split('\n').map(line => {
+                    let tLine = line.trim();
+                    if (tLine === '') return line;
+                    if (tLine.startsWith('#')) {
+                        return tLine.replace(/URI="(.*?)"/g, (match, p1) => {
+                            let absUrl = p1.startsWith('http') ? p1 : new URL(p1, baseUrl).toString();
+                            return `URI="http://127.0.0.1:8080/proxy?target=${encodeURIComponent(absUrl)}"`;
+                        });
+                    }
+                    let absoluteUrl = tLine.startsWith('http') ? tLine : new URL(tLine, baseUrl).toString();
+                    return `http://127.0.0.1:8080/proxy?target=${encodeURIComponent(absoluteUrl)}`;
+                }).join('\n');
 
-//                 res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
-//                 res.end(rewritten);
+                res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+                res.end(rewritten);
                 
-//             } else {
-//                 const response = await axios.get(targetUrl, {
-//                     responseType: 'stream',
-//                     headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
-//                 });
-//                 res.writeHead(200, { 'Content-Type': response.headers['content-type'] || 'video/MP2T' });
-//                 response.data.pipe(res);
-//             }
-//         } catch (err) {
-//             res.writeHead(500); res.end();
-//         }
-//     });
+            } else {
+                const response = await axios.get(targetUrl, {
+                    responseType: 'stream',
+                    headers: { 'User-Agent': currentStream.ua, 'Referer': currentStream.referer, 'Cookie': currentStream.cookie }
+                });
+                res.writeHead(200, { 'Content-Type': response.headers['content-type'] || 'video/MP2T' });
+                response.data.pipe(res);
+            }
+        } catch (err) {
+            res.writeHead(500); res.end();
+        }
+    });
 
-//     server.listen(8080, () => {
-//         console.log(`\n[🌐 PROXY] Local HLS Server Started at http://127.0.0.1:8080`);
-//     });
-// };
+    server.listen(8080, () => {
+        console.log(`\n[🌐 PROXY] Local HLS Server Started at http://127.0.0.1:8080`);
+    });
+};
 
-// // ==========================================
-// // 1️⃣ LINK EXTRACTION (PUPPETEER)
-// // ==========================================
-// async function getStreamData(isBackgroundFetch = false) {
-//     let modeText = isBackgroundFetch ? "BACKGROUND SWAP MODE" : "FIRST BOOT MODE";
-//     console.log(`\n${"-".repeat(60)}`);
-//     console.log(`[🔍 CYCLE #${fetchCycle}] Puppeteer Chrome Start kar raha hoon... (${modeText})`);
-//     console.log(`[⏰ TIME] Fetch started at: ${formatPKT(Date.now())}`);
-//     console.log(`${"-".repeat(60)}`);
+// ==========================================
+// 1️⃣ LINK EXTRACTION (PUPPETEER)
+// ==========================================
+async function getStreamData(isBackgroundFetch = false) {
+    let modeText = isBackgroundFetch ? "BACKGROUND SWAP MODE" : "FIRST BOOT MODE";
+    console.log(`\n${"-".repeat(60)}`);
+    console.log(`[🔍 CYCLE #${fetchCycle}] Puppeteer Chrome Start kar raha hoon... (${modeText})`);
+    console.log(`[⏰ TIME] Fetch started at: ${formatPKT(Date.now())}`);
+    console.log(`${"-".repeat(60)}`);
     
-//     let browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--mute-audio'];
+    let browserArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--mute-audio'];
     
-//     if (IS_PROXY_ON && PROXY_IP && PROXY_PORT) browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
+    if (IS_PROXY_ON && PROXY_IP && PROXY_PORT) browserArgs.push(`--proxy-server=http://${PROXY_IP}:${PROXY_PORT}`);
 
-//     const browser = await puppeteer.launch({ headless: true, args: browserArgs });
-//     const page = await browser.newPage();
+    const browser = await puppeteer.launch({ headless: true, args: browserArgs });
+    const page = await browser.newPage();
 
-//     if (IS_PROXY_ON && PROXY_USER && PROXY_PASS) {
-//         await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
-//     }
+    if (IS_PROXY_ON && PROXY_USER && PROXY_PASS) {
+        await page.authenticate({ username: PROXY_USER, password: PROXY_PASS });
+    }
 
-//     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-//     let streamData = null;
+    let streamData = null;
 
-//     page.on('request', (request) => {
-//         const url = request.url();
-//         if (url.includes('.m3u8')) {
-//             const urlObj = new URL(url);
-//             const expires = urlObj.searchParams.get('expires') || urlObj.searchParams.get('e') || urlObj.searchParams.get('exp');
-//             streamData = {
-//                 url: url,
-//                 ua: request.headers()['user-agent'] || '', 
-//                 referer: request.headers()['referer'] || TARGET_URL,
-//                 cookie: request.headers()['cookie'] || '',
-//                 expireTime: expires ? parseInt(expires) * 1000 : Date.now() + (60 * 60 * 1000)
-//             };
-//         }
-//     });
+    page.on('request', (request) => {
+        const url = request.url();
+        if (url.includes('.m3u8')) {
+            const urlObj = new URL(url);
+            const expires = urlObj.searchParams.get('expires') || urlObj.searchParams.get('e') || urlObj.searchParams.get('exp');
+            streamData = {
+                url: url,
+                ua: request.headers()['user-agent'] || '', 
+                referer: request.headers()['referer'] || TARGET_URL,
+                cookie: request.headers()['cookie'] || '',
+                expireTime: expires ? parseInt(expires) * 1000 : Date.now() + (60 * 60 * 1000)
+            };
+        }
+    });
 
-//     try {
-//         console.log(`  [🌐 JS] Going to Target URL: ${TARGET_URL}`);
-//         await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-//         await page.click('body').catch(() => {});
-//         console.log(`  [⏳ JS] Waiting 15 seconds to grab the M3U8 link...`);
-//         await new Promise(r => setTimeout(r, 15000));
-//     } catch (e) {
-//         if (!isBackgroundFetch) console.log(`  [❌ ERROR] Page load nahi ho saka.`);
-//     }
+    try {
+        console.log(`  [🌐 JS] Going to Target URL: ${TARGET_URL}`);
+        await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.click('body').catch(() => {});
+        console.log(`  [⏳ JS] Waiting 15 seconds to grab the M3U8 link...`);
+        await new Promise(r => setTimeout(r, 15000));
+    } catch (e) {
+        if (!isBackgroundFetch) console.log(`  [❌ ERROR] Page load nahi ho saka.`);
+    }
     
-//     await browser.close();
+    await browser.close();
 
-//     if (streamData) {
-//         consecutiveLinkFails = 0; 
-//         console.log(`\n  🎉 [BINGO] Link Extract Ho Gaya!`);
-//         console.log(`  🔗 [M3U8 LINK]: ${streamData.url}`);
-//         console.log(`  📅 [TOTAL ORIGINAL EXPIRY]: ${formatPKT(streamData.expireTime)}`);
-//         return streamData;
-//     } else {
-//         if (!isBackgroundFetch) {
-//             consecutiveLinkFails++;
-//             console.log(`\n  🚨 [WARNING] Link nahi mila. Strike: ${consecutiveLinkFails}/3`);
-//             if (consecutiveLinkFails >= 3) {
-//                 console.log(`\n  🛑 [FATAL] 3 baar consecutive link nahi mila. Bot stopped.`);
-//                 process.exit(1); 
-//             }
-//         }
-//         return null;
-//     }
-// }
+    if (streamData) {
+        consecutiveLinkFails = 0; 
+        console.log(`\n  🎉 [BINGO] Link Extract Ho Gaya!`);
+        console.log(`  🔗 [M3U8 LINK]: ${streamData.url}`);
+        console.log(`  📅 [TOTAL ORIGINAL EXPIRY]: ${formatPKT(streamData.expireTime)}`);
+        return streamData;
+    } else {
+        if (!isBackgroundFetch) {
+            consecutiveLinkFails++;
+            console.log(`\n  🚨 [WARNING] Link nahi mila. Strike: ${consecutiveLinkFails}/3`);
+            if (consecutiveLinkFails >= 3) {
+                console.log(`\n  🛑 [FATAL] 3 baar consecutive link nahi mila. Bot stopped.`);
+                process.exit(1); 
+            }
+        }
+        return null;
+    }
+}
 
-// // ==========================================
-// // 2️⃣ FFMPEG (CONNECTS TO INTERNAL PROXY)
-// // ==========================================
-// function startFfmpeg() {
-//     console.log(`\n[🚀 STEP 2] FFmpeg Engine Shuru... (Internal Proxy par connected)`);
-//     console.log(`[⏰ TIME] FFmpeg Started at: ${formatPKT(Date.now())}`);
+// ==========================================
+// 2️⃣ FFMPEG (CONNECTS TO INTERNAL PROXY)
+// ==========================================
+function startFfmpeg() {
+    console.log(`\n[🚀 STEP 2] FFmpeg Engine Shuru... (Internal Proxy par connected)`);
+    console.log(`[⏰ TIME] FFmpeg Started at: ${formatPKT(Date.now())}`);
     
-//     const args = [
-//         "-re", "-loglevel", "error", 
-//         "-i", "http://127.0.0.1:8080/live.m3u8", 
-//         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
-//         "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
-//         "-f", "flv", RTMP_URL
-//     ];
+    const args = [
+        "-re", "-loglevel", "error", 
+        "-i", "http://127.0.0.1:8080/live.m3u8", 
+        "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
+        "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
+        "-f", "flv", RTMP_URL
+    ];
 
-//     const ffmpeg = spawn('ffmpeg', args);
-//     const startTime = Date.now();
-//     let hasOkRuError = false; 
+    const ffmpeg = spawn('ffmpeg', args);
+    const startTime = Date.now();
+    let hasOkRuError = false; 
 
-//     ffmpeg.stderr.on('data', (err) => {
-//         const msg = err.toString();
-//         if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
-//             console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
-//             hasOkRuError = true; 
-//         }
-//     });
+    ffmpeg.stderr.on('data', (err) => {
+        const msg = err.toString();
+        if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
+            console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
+            hasOkRuError = true; 
+        }
+    });
 
-//     ffmpeg.on('close', (code) => {
-//         const duration = (Date.now() - startTime) / 1000;
-//         console.log(`\n⚠️ FFmpeg Crash ho gaya. (Code: ${code}, Duration: ${duration}s)`);
+    ffmpeg.on('close', (code) => {
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`\n⚠️ FFmpeg Crash ho gaya. (Code: ${code}, Duration: ${duration}s)`);
 
-//         if (hasOkRuError || (code !== 0 && duration < 120)) {
-//             consecutiveFfmpegFails++;
-//             console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
-//             if (consecutiveFfmpegFails >= 3) {
-//                 console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai. Workflow khtam.`);
-//                 process.exit(1);
-//             }
-//         } else if (duration >= 120) {
-//             consecutiveFfmpegFails = 0; 
-//         }
+        if (hasOkRuError || (code !== 0 && duration < 120)) {
+            consecutiveFfmpegFails++;
+            console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
+            if (consecutiveFfmpegFails >= 3) {
+                console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai. Workflow khtam.`);
+                process.exit(1);
+            }
+        } else if (duration >= 120) {
+            consecutiveFfmpegFails = 0; 
+        }
 
-//         console.log(`[🔄] Auto-Restarting FFmpeg...`);
-//         currentFfmpeg = startFfmpeg();
-//     });
+        console.log(`[🔄] Auto-Restarting FFmpeg...`);
+        currentFfmpeg = startFfmpeg();
+    });
 
-//     return ffmpeg;
-// }
+    return ffmpeg;
+}
 
-// // ==========================================
-// // 🚀 MAIN MANAGER LOOP & ALARM
-// // ==========================================
-// async function scheduleNextFetch() {
+// ==========================================
+// 🚀 MAIN MANAGER LOOP & ALARM
+// ==========================================
+async function scheduleNextFetch() {
     
-//     // 🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
-//     // ⚠️ TESTING MODE: 2 MINUTE SWAP LOGIC
-//     // ----------------------------------------------------------------
-//     // Asli Logic (Commented Out):
-//     // let waitTimeMs = (currentStream.expireTime - Date.now()) - (4 * 60 * 1000); 
-//     // if (waitTimeMs < 0) waitTimeMs = 60000;
-//     // ----------------------------------------------------------------
+    // 🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+    // ⚠️ TESTING MODE: 2 MINUTE SWAP LOGIC
+    // ----------------------------------------------------------------
+    // Asli Logic (Commented Out):
+    // let waitTimeMs = (currentStream.expireTime - Date.now()) - (4 * 60 * 1000); 
+    // if (waitTimeMs < 0) waitTimeMs = 60000;
+    // ----------------------------------------------------------------
     
-//     // Testing ke liye fix 2 minute (120,000 milliseconds) ka timer
-//     let waitTimeMs = 2 * 60 * 1000; 
+    // Testing ke liye fix 2 minute (120,000 milliseconds) ka timer
+    let waitTimeMs = 2 * 60 * 1000; 
     
-//     // Jab testing khatam ho jaye toh is 2 min wali line ko delete kar dena, 
-//     // aur upar wali "Asli Logic" ko uncomment kar dena!
-//     // 🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+    // Jab testing khatam ho jaye toh is 2 min wali line ko delete kar dena, 
+    // aur upar wali "Asli Logic" ko uncomment kar dena!
+    // 🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
 
-//     console.log(`\n[⏳ ALARM SET] Next Background Fetch will trigger exactly in ${Math.round(waitTimeMs/60000)} minutes.`);
-//     console.log(`[⏰ TRIGGER TIME] Alarm baje ga: ${formatPKT(Date.now() + waitTimeMs)}`);
+    console.log(`\n[⏳ ALARM SET] Next Background Fetch will trigger exactly in ${Math.round(waitTimeMs/60000)} minutes.`);
+    console.log(`[⏰ TRIGGER TIME] Alarm baje ga: ${formatPKT(Date.now() + waitTimeMs)}`);
 
-//     setTimeout(async () => {
-//         console.log(`\n${"=".repeat(60)}`);
-//         console.log(`⏰ [ALARM RINGS!] Purani stream chal rahi hai... Background mein naya link lene ja raha hoon.`);
-//         console.log(`${"=".repeat(60)}`);
+    setTimeout(async () => {
+        console.log(`\n${"=".repeat(60)}`);
+        console.log(`⏰ [ALARM RINGS!] Purani stream chal rahi hai... Background mein naya link lene ja raha hoon.`);
+        console.log(`${"=".repeat(60)}`);
         
-//         fetchCycle++; // Agla chakar shuru
-//         let newData = await getStreamData(true);
+        fetchCycle++; // Agla chakar shuru
+        let newData = await getStreamData(true);
         
-//         if (newData) {
-//             currentStream = newData; 
-//             console.log(`\n💥 [MAGIC SWAP!] Naya link internally Local Proxy ko de diya gaya hai!`);
-//             console.log(`💥 [0% DOWNTIME] FFmpeg ko jhatka bhi nahi laga aur stream naye link par transfer ho gayi!`);
-//         } else {
-//             console.log(`\n⚠️ [SWAP FAILED] Background fetch fail hua, aglay minute dobara try karunga.`);
-//         }
+        if (newData) {
+            currentStream = newData; 
+            console.log(`\n💥 [MAGIC SWAP!] Naya link internally Local Proxy ko de diya gaya hai!`);
+            console.log(`💥 [0% DOWNTIME] FFmpeg ko jhatka bhi nahi laga aur stream naye link par transfer ho gayi!`);
+        } else {
+            console.log(`\n⚠️ [SWAP FAILED] Background fetch fail hua, aglay minute dobara try karunga.`);
+        }
 
-//         // Agle chakar ka alarm dobara set karo
-//         scheduleNextFetch(); 
-//     }, waitTimeMs);
-// }
+        // Agle chakar ka alarm dobara set karo
+        scheduleNextFetch(); 
+    }, waitTimeMs);
+}
 
-// async function mainLoop() {
-//     console.log(`\n[🚀 MAIN] System Boot: ${formatPKT(Date.now())}`);
+async function mainLoop() {
+    console.log(`\n[🚀 MAIN] System Boot: ${formatPKT(Date.now())}`);
     
-//     startLocalProxy();
+    startLocalProxy();
 
-//     currentStream = await getStreamData();
-//     if (!currentStream) {
-//         console.log(`[🔄] 1 minute baad retry...`);
-//         setTimeout(mainLoop, 60000);
-//         return;
-//     }
+    currentStream = await getStreamData();
+    if (!currentStream) {
+        console.log(`[🔄] 1 minute baad retry...`);
+        setTimeout(mainLoop, 60000);
+        return;
+    }
 
-//     currentFfmpeg = startFfmpeg();
+    currentFfmpeg = startFfmpeg();
 
-//     // Alarm lagao agle link ke liye
-//     scheduleNextFetch();
-// }
+    // Alarm lagao agle link ke liye
+    scheduleNextFetch();
+}
 
-// mainLoop();
+mainLoop();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
