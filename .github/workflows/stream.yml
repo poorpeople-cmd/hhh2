@@ -1,87 +1,87 @@
-name: VIP 0% Downtime Streamer
+# name: VIP 0% Downtime Streamer
 
-on:
-  workflow_dispatch:
-    inputs:
-      stream_id:
-        description: 'Select Stream Server ID (1, 2, 3, or 4)'
-        required: true
-        type: choice
-        options:
-          - '1'
-          - '2'
-          - '3'
-          - '4'
-        default: '1'
-      target_url:
-        description: 'Target Video Link (Website URL)'
-        required: true
-        default: 'https://dadocric.st/player.php?id=willowextra'
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       stream_id:
+#         description: 'Select Stream Server ID (1, 2, 3, or 4)'
+#         required: true
+#         type: choice
+#         options:
+#           - '1'
+#           - '2'
+#           - '3'
+#           - '4'
+#         default: '1'
+#       target_url:
+#         description: 'Target Video Link (Website URL)'
+#         required: true
+#         default: 'https://dadocric.st/player.php?id=willowextra'
 
-      # 🛡️ PROXY TOGGLE
-      use_proxy:
-        description: 'Proxy Use Karna Hai?'
-        required: true
-        type: choice
-        options:
-          - 'No (Proxy OFF)'
-          - 'Yes (Proxy ON)'
-        default: 'No (Proxy OFF)'
+#       # 🛡️ PROXY TOGGLE
+#       use_proxy:
+#         description: 'Proxy Use Karna Hai?'
+#         required: true
+#         type: choice
+#         options:
+#           - 'No (Proxy OFF)'
+#           - 'Yes (Proxy ON)'
+#         default: 'No (Proxy OFF)'
         
-      # 🌐 NEW: MULTI PROXY SELECTOR
-      proxy_select:
-        description: 'Konsa Proxy IP use karna hai?'
-        required: true
-        type: choice
-        options:
-          - 'Proxy 1'
-          - 'Proxy 2'
-          - 'Proxy 3'
-        default: 'Proxy 1'
+#       # 🌐 NEW: MULTI PROXY SELECTOR
+#       proxy_select:
+#         description: 'Konsa Proxy IP use karna hai?'
+#         required: true
+#         type: choice
+#         options:
+#           - 'Proxy 1'
+#           - 'Proxy 2'
+#           - 'Proxy 3'
+#         default: 'Proxy 1'
 
-jobs:
-  run-stream:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 Hours Limit
+# jobs:
+#   run-stream:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 360 # 6 Hours Limit
 
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
+#     steps:
+#     - name: Checkout Code
+#       uses: actions/checkout@v3
 
-    - name: Setup System (FFmpeg & Chrome)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg google-chrome-stable
+#     - name: Setup System (FFmpeg & Chrome)
+#       run: |
+#         sudo apt-get update
+#         sudo apt-get install -y ffmpeg google-chrome-stable
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
+#     - name: Setup Node.js
+#       uses: actions/setup-node@v3
+#       with:
+#         node-version: '18'
 
-    - name: Install Libraries (Puppeteer & Axios & Recorder)
-      run: npm install puppeteer axios puppeteer-screen-recorder fs path
+#     - name: Install Libraries (Puppeteer & Axios & Recorder)
+#       run: npm install puppeteer axios puppeteer-screen-recorder fs path
 
-    - name: Start The Zero-Downtime Stream Manager
-      env:
-        STREAM_ID: ${{ inputs.stream_id }}
-        TARGET_URL: ${{ inputs.target_url }}
-        GH_PAT: ${{ secrets.GH_PAT }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_REF_NAME: ${{ github.ref_name }}
+#     - name: Start The Zero-Downtime Stream Manager
+#       env:
+#         STREAM_ID: ${{ inputs.stream_id }}
+#         TARGET_URL: ${{ inputs.target_url }}
+#         GH_PAT: ${{ secrets.GH_PAT }}
+#         GITHUB_REPOSITORY: ${{ github.repository }}
+#         GITHUB_REF_NAME: ${{ github.ref_name }}
         
-        # 🛡️ Proxy Variables
-        USE_PROXY: ${{ inputs.use_proxy }}
-        PROXY_SELECT: ${{ inputs.proxy_select }}
+#         # 🛡️ Proxy Variables
+#         USE_PROXY: ${{ inputs.use_proxy }}
+#         PROXY_SELECT: ${{ inputs.proxy_select }}
         
-      run: node streamer.js
+#       run: node streamer.js
 
-    - name: Upload Video Artifacts
-      if: always() 
-      uses: actions/upload-artifact@v4
-      with:
-        name: stream-fetch-videos
-        path: videos/ 
-        retention-days: 5
+#     - name: Upload Video Artifacts
+#       if: always() 
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: stream-fetch-videos
+#         path: videos/ 
+#         retention-days: 5
 
 
 
@@ -299,76 +299,76 @@ jobs:
 
 # // ==================== done , ooper waley mei onr time proxy system add kya hai =======================
 
-# 1000
+1000
 
-# name: VIP 0% Downtime Streamer
+name: VIP 0% Downtime Streamer
 
-# on:
-#   workflow_dispatch:
-#     inputs:
-#       stream_id:
-#         description: 'Select Stream Server ID (1, 2, 3, or 4)'
-#         required: true
-#         type: choice
-#         options:
-#           - '1'
-#           - '2'
-#           - '3'
-#           - '4'
-#         default: '1'
-#       target_url:
-#         description: 'Target Video Link (Website URL)'
-#         required: true
-#         default: 'https://dadocric.st/player.php?id=willowextra'
+on:
+  workflow_dispatch:
+    inputs:
+      stream_id:
+        description: 'Select Stream Server ID (1, 2, 3, or 4)'
+        required: true
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+        default: '1'
+      target_url:
+        description: 'Target Video Link (Website URL)'
+        required: true
+        default: 'https://dadocric.st/player.php?id=willowextra'
 
-#       # 🛡️ PROXY TOGGLE
-#       use_proxy:
-#         description: 'Proxy Use Karna Hai?'
-#         required: true
-#         type: choice
-#         options:
-#           - 'No (Proxy OFF)'
-#           - 'Yes (Proxy ON)'
-#         default: 'No (Proxy OFF)'
+      # 🛡️ PROXY TOGGLE
+      use_proxy:
+        description: 'Proxy Use Karna Hai?'
+        required: true
+        type: choice
+        options:
+          - 'No (Proxy OFF)'
+          - 'Yes (Proxy ON)'
+        default: 'No (Proxy OFF)'
 
-# jobs:
-#   run-stream:
-#     runs-on: ubuntu-latest
-#     timeout-minutes: 360 # 6 Hours Limit
+jobs:
+  run-stream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6 Hours Limit
 
-#     steps:
-#     - name: Checkout Code
-#       uses: actions/checkout@v3
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-#     - name: Setup System (FFmpeg & Chrome)
-#       run: |
-#         sudo apt-get update
-#         sudo apt-get install -y ffmpeg google-chrome-stable
+    - name: Setup System (FFmpeg & Chrome)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg google-chrome-stable
 
-#     - name: Setup Node.js
-#       uses: actions/setup-node@v3
-#       with:
-#         node-version: '18'
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-#     - name: Install Libraries (Puppeteer & Axios)
-#       run: npm install puppeteer axios
+    - name: Install Libraries (Puppeteer & Axios)
+      run: npm install puppeteer axios
 
-#     - name: Start The Zero-Downtime Stream Manager
-#       env:
-#         STREAM_ID: ${{ inputs.stream_id }}
-#         TARGET_URL: ${{ inputs.target_url }}
-#         GH_PAT: ${{ secrets.GH_PAT }}
-#         GITHUB_REPOSITORY: ${{ github.repository }}
-#         GITHUB_REF_NAME: ${{ github.ref_name }}
+    - name: Start The Zero-Downtime Stream Manager
+      env:
+        STREAM_ID: ${{ inputs.stream_id }}
+        TARGET_URL: ${{ inputs.target_url }}
+        GH_PAT: ${{ secrets.GH_PAT }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
         
-#         # 🛡️ Proxy Variables
-#         USE_PROXY: ${{ inputs.use_proxy }}
-#         PROXY_IP: '31.59.20.176'
-#         PROXY_PORT: '6754'
-#         PROXY_USER: 'dgmtstlf'
-#         PROXY_PASS: 'pm4wnuro0gy9'
+        # 🛡️ Proxy Variables
+        USE_PROXY: ${{ inputs.use_proxy }}
+        PROXY_IP: '31.59.20.176'
+        PROXY_PORT: '6754'
+        PROXY_USER: 'dgmtstlf'
+        PROXY_PASS: 'pm4wnuro0gy9'
         
-#       run: node streamer.js
+      run: node streamer.js
 
 
 
