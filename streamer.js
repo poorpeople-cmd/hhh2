@@ -2983,15 +2983,35 @@ async function getStreamData() {
 // ==========================================
 // 2️⃣ FFMPEG (WITH SMART ERROR DETECTION)
 // ==========================================
+
+// ==========================================
+// 2️⃣ FFMPEG (WITH SMART ERROR DETECTION & PROXY)
+// ==========================================
 function startFfmpeg(data) {
     console.log(`[🚀 STEP 2] FFmpeg Shuru... (Strike Counter: ${consecutiveFfmpegFails}/3)`);
     
     const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}\r\n`;
     
+    // 🛡️ NAYA: FFmpeg ke liye Proxy setup karna
+    let proxyArgs = [];
+    if (IS_PROXY_ON && PROXY_IP && PROXY_PORT) {
+        let proxyAuth = (PROXY_USER && PROXY_PASS) ? `${PROXY_USER}:${PROXY_PASS}@` : '';
+        let proxyUrl = `http://${proxyAuth}${PROXY_IP}:${PROXY_PORT}`;
+        proxyArgs = ["-http_proxy", proxyUrl];
+        console.log(`  [🛡️] FFmpeg bhi Proxy use kar raha hai...`);
+    }
+    
     const args = [
-        "-re", "-loglevel", "error", "-headers", headersCmd, "-i", data.url,
+        ...proxyArgs, // Proxy yahan add ho rahi hai
+        "-re", 
+        // 🔄 NAYA: Auto-Reconnect logic takay error 0 na aaye
+        "-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+        "-loglevel", "error", 
+        "-headers", headersCmd, 
+        "-i", data.url,
         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
-        "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
+        "-vf", "scale=640:360", "-r", "20", 
+        "-c:a", "aac", "-b:a", "32k",
         "-f", "flv", RTMP_URL
     ];
 
@@ -3002,7 +3022,7 @@ function startFfmpeg(data) {
     ffmpeg.stderr.on('data', (err) => {
         const msg = err.toString();
         if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
-            console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
+            console.log(`🚨 [OK.RU / STREAM ERROR]: ${msg.trim()}`);
             hasOkRuError = true; 
         }
     });
@@ -3022,7 +3042,7 @@ function startFfmpeg(data) {
             console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
             
             if (consecutiveFfmpegFails >= 3) {
-                console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai (3 Strikes). Workflow khtam.`);
+                console.log(`\n🛑 [FATAL] Bar bar stream block ho rahi hai (3 Strikes). Workflow khtam.`);
                 process.exit(1);
             }
         } else if (duration >= 120) {
@@ -3032,6 +3052,60 @@ function startFfmpeg(data) {
 
     return ffmpeg;
 }
+
+
+
+
+
+// function startFfmpeg(data) {
+//     console.log(`[🚀 STEP 2] FFmpeg Shuru... (Strike Counter: ${consecutiveFfmpegFails}/3)`);
+    
+//     const headersCmd = `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nReferer: ${data.referer}\r\nCookie: ${data.cookie}\r\n`;
+    
+//     const args = [
+//         "-re", "-loglevel", "error", "-headers", headersCmd, "-i", data.url,
+//         "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k",
+//         "-vf", "scale=640:360", "-r", "20", "-c:a", "aac", "-b:a", "32k",
+//         "-f", "flv", RTMP_URL
+//     ];
+
+//     const ffmpeg = spawn('ffmpeg', args);
+//     const startTime = Date.now();
+//     let hasOkRuError = false; 
+
+//     ffmpeg.stderr.on('data', (err) => {
+//         const msg = err.toString();
+//         if (msg.includes("403 Forbidden") || msg.includes("Connection refused") || msg.includes("Input/output error")) {
+//             console.log(`🚨 [OK.RU BLOCKED]: ${msg.trim()}`);
+//             hasOkRuError = true; 
+//         }
+//     });
+
+//     ffmpeg.on('close', (code, signal) => {
+//         const duration = (Date.now() - startTime) / 1000;
+
+//         if (signal === 'SIGKILL' || signal === 'SIGTERM') {
+//             console.log(`[♻️ SWAP CLEANUP] Purana FFmpeg successfully swap ho gaya.`);
+//             return; 
+//         }
+
+//         console.log(`\n⚠️ FFmpeg band ho gaya. (Code: ${code}, Duration: ${duration}s)`);
+
+//         if (hasOkRuError || (code !== 0 && duration < 120)) {
+//             consecutiveFfmpegFails++;
+//             console.log(`🚨 FFmpeg Strike lag gayi: ${consecutiveFfmpegFails}/3`);
+            
+//             if (consecutiveFfmpegFails >= 3) {
+//                 console.log(`\n🛑 [FATAL] OK.ru bar bar stream block kar raha hai (3 Strikes). Workflow khtam.`);
+//                 process.exit(1);
+//             }
+//         } else if (duration >= 120) {
+//             consecutiveFfmpegFails = 0; 
+//         }
+//     });
+
+//     return ffmpeg;
+// }
 
 // ==========================================
 // 🚀 MAIN MANAGER LOOP
