@@ -775,8 +775,8 @@ jobs:
         USE_PROXY: ${{ inputs.use_proxy }}
         PROXY_IP: '31.59.20.176'
         PROXY_PORT: '6754'
-        PROXY_USER: 'dgmtstlf'
-        PROXY_PASS: 'pm4wnuro0gy9'
+        PROXY_USER: 'cjasfidu'
+        PROXY_PASS: 'qhnyvm0qpf6p'
         
       run: node streamer.js
 
