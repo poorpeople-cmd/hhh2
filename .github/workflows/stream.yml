@@ -1,7 +1,4 @@
-
-#  10002 
-
-name: VIP 0% Downtime Streamer
+name: Node.js 24/7 Cricket Streamer
 
 on:
   workflow_dispatch:
@@ -21,7 +18,7 @@ on:
         required: true
         default: 'https://dadocric.st/player.php?id=willowextra'
 
-      # 🛡️ PROXY TOGGLE
+      # 🛡️ NAYA INPUT: PROXY TOGGLE
       use_proxy:
         description: 'Proxy Use Karna Hai?'
         required: true
@@ -50,10 +47,10 @@ jobs:
       with:
         node-version: '18'
 
-    - name: Install Libraries (Puppeteer & Axios)
-      run: npm install puppeteer axios
+    - name: Install Puppeteer
+      run: npm install puppeteer
 
-    - name: Start The Zero-Downtime Stream Manager
+    - name: Start The Stream Manager
       env:
         STREAM_ID: ${{ inputs.stream_id }}
         TARGET_URL: ${{ inputs.target_url }}
@@ -61,14 +58,15 @@ jobs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_REF_NAME: ${{ github.ref_name }}
         
-        # 🛡️ Proxy Variables
+        # 🛡️ NAYA: Proxy Variables
         USE_PROXY: ${{ inputs.use_proxy }}
         PROXY_IP: '31.59.20.176'
         PROXY_PORT: '6754'
-        PROXY_USER: 'dgmtstlf'
-        PROXY_PASS: 'pm4wnuro0gy9'
+        PROXY_USER: 'cjasfidu'
+        PROXY_PASS: 'qhnyvm0qpf6p'
         
       run: node streamer.js
+
 
 
 
